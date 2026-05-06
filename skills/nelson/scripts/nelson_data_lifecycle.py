@@ -1743,6 +1743,62 @@ def _read_handoff_packets(mission_dir: Path) -> list[dict]:
     return packets
 
 
+def _compute_fleet_status_staleness(
+    fleet_status: dict | None, mission_log: dict | None
+) -> dict | None:
+    """Return a dict describing fleet-status staleness, or None if fresh.
+
+    Considered stale when either:
+      - last_updated is older than FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+      - mission-log contains events newer than last_event_id
+    """
+    if fleet_status is None:
+        return None
+
+    age_seconds: int | None = None
+    last_updated = fleet_status.get("last_updated")
+    if last_updated:
+        try:
+            ts = datetime.strptime(last_updated, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            )
+            age_seconds = int(
+                (datetime.now(timezone.utc) - ts).total_seconds()
+            )
+        except ValueError:
+            age_seconds = None
+
+    last_event_id = fleet_status.get("last_event_id")
+    events = (mission_log or {}).get("events", [])
+    pending_count = 0
+    last_event_summary: str | None = None
+    if isinstance(last_event_id, int):
+        newer = events[last_event_id + 1 :]
+        pending_count = len(newer)
+        if newer:
+            tail = newer[-1]
+            tail_data = tail.get("data", {}) or {}
+            tail_id = tail_data.get("task_id")
+            label = tail.get("type", "unknown")
+            last_event_summary = (
+                f"{label} task-{tail_id}" if tail_id is not None else label
+            )
+
+    age_threshold_exceeded = (
+        age_seconds is not None
+        and age_seconds > FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+    )
+    if not age_threshold_exceeded and pending_count == 0:
+        return None
+
+    return {
+        "last_updated": last_updated,
+        "age_seconds": age_seconds,
+        "pending_event_count": pending_count,
+        "last_event_summary": last_event_summary,
+    }
+
+
 def _build_recovery_briefing(
     mission_dir: Path,
     fleet_status: dict | None,
@@ -1751,6 +1807,8 @@ def _build_recovery_briefing(
 ) -> dict:
     """Build a structured recovery briefing from available mission data."""
     tasks = battle_plan.get("tasks", [])
+    mission_log = _read_json_optional(mission_dir / "mission-log.json")
+    staleness = _compute_fleet_status_staleness(fleet_status, mission_log)
 
     pending_tasks = []
     for t in tasks:
@@ -1789,6 +1847,7 @@ def _build_recovery_briefing(
             else "unknown"
         ),
         "fleet_status": fleet_status,
+        "fleet_status_staleness": staleness,
         "handoff_packets": handoff_packets,
         "pending_tasks": pending_tasks,
         "recommended_actions": recommended_actions,
@@ -1801,6 +1860,31 @@ def _format_recovery_text(briefing: dict) -> str:
     lines.append(f"[nelson-data] Recovery briefing for {briefing['mission_dir']}")
     lines.append(f"  Status: {briefing['mission_status']}")
     lines.append("")
+
+    staleness = briefing.get("fleet_status_staleness")
+    if staleness:
+        age = staleness.get("age_seconds")
+        last_updated = staleness.get("last_updated")
+        pending = staleness.get("pending_event_count", 0)
+        last_event = staleness.get("last_event_summary")
+        lines.append("  ⚠ Fleet status may be stale.")
+        if last_updated and age is not None:
+            minutes = age // 60
+            lines.append(
+                f"    fleet-status last updated: {last_updated} "
+                f"({minutes} minutes ago)"
+            )
+        if pending > 0:
+            tail = f" (last: {last_event})" if last_event else ""
+            lines.append(
+                f"    mission-log has {pending} events newer than "
+                f"fleet-status{tail}"
+            )
+        lines.append(
+            "    Verify in-progress task state against handoff packets "
+            "and file state before resuming."
+        )
+        lines.append("")
 
     fs = briefing.get("fleet_status")
     if fs:

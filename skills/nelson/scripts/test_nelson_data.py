@@ -1583,6 +1583,54 @@ class TestRecover:
         briefing = json.loads(result.stdout)
         assert briefing["mission_dir"] == str(live_dir)
 
+    def test_recover_warns_when_fleet_status_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """Recovery briefing surfaces a warning when fleet-status was
+        written longer ago than FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+        OR when mission-log has events newer than last_event_id."""
+        mission_dir = setup_mission_with_task(tmp_path)
+        # Write a stale last_updated and a low last_event_id. Then append
+        # a state-changing event without going through cmd_event so
+        # fleet-status doesn't get refreshed.
+        fs_path = mission_dir / "fleet-status.json"
+        fs = read_json(fs_path)
+        fs["last_updated"] = "2020-01-01T00:00:00Z"
+        fs["last_event_id"] = -1
+        fs_path.write_text(json.dumps(fs), encoding="utf-8")
+
+        # Append an event directly to mission-log so last_event_id < len-1.
+        log_path = mission_dir / "mission-log.json"
+        log = read_json(log_path)
+        log.setdefault("events", []).append(
+            {
+                "type": "task_started",
+                "checkpoint": 0,
+                "timestamp": "2026-05-06T12:00:00Z",
+                "data": {"task_id": 1},
+            }
+        )
+        log_path.write_text(json.dumps(log), encoding="utf-8")
+
+        result = run(
+            "recover", "--mission-dir", str(mission_dir), "--format", "text"
+        )
+        assert "Fleet status may be stale" in result.stdout
+
+    def test_recover_no_warning_when_fleet_status_is_fresh(
+        self, tmp_path: Path
+    ) -> None:
+        """A freshly-written fleet-status produces no staleness warning."""
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "task_started", "task_id=1",
+        )
+        result = run(
+            "recover", "--mission-dir", str(mission_dir), "--format", "text"
+        )
+        assert "Fleet status may be stale" not in result.stdout
+
 
 # ---------------------------------------------------------------------------
 # Handoff Lifecycle
