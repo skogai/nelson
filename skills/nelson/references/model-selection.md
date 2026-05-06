@@ -33,6 +33,17 @@ In cost-savings mode:
 - Weight ≤ 4 after adjustment → assign **haiku**
 - Weight ≥ 5 after adjustment → inherit **admiral's model**
 
+## Estimate Phase Carve-Out
+
+The Estimate phase (Q1–Q7) is exempt from cost-savings model adjustment. All Estimate subagents — Explorer dispatches at Q1 and the Q2–Q3 / Q4–Q7 dispatches — inherit the admiral's model.
+
+Rationale: planning quality dominates downstream execution quality. A weaker model in The Estimate produces poorer terrain assessments, looser commander's guidance, and weaker acceptance criteria, which the squadron then carries into implementation. Degrading the Estimate to save tokens is a false economy.
+
+When invoking Estimate subagents:
+- Omit the `model:` parameter on the `Agent` tool call so the subagent inherits the admiral's model.
+- Do not apply the haiku briefing enhancement blocks below — they are conditional on haiku assignment, which does not occur during The Estimate.
+- Cost-savings adjustment resumes at Battle Plan and Formation steps, where it applies normally.
+
 ## Hybrid Adjustment
 
 The tasking agent adjusts default weights before assignment:
