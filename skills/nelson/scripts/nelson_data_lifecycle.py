@@ -1651,22 +1651,27 @@ def cmd_headless(args: argparse.Namespace) -> None:
 def _find_active_mission(missions_dir: Path) -> Path | None:
     """Find the most recent active mission directory.
 
-    Checks for .active-* symlink files first, then falls back to the most
-    recent mission directory without a stand-down.json.
+    Walks all ``.active-*`` markers, resolves each to a mission directory,
+    skips ones that are missing or already stood down, and returns the
+    candidate with the latest timestamp-prefixed directory name. Falls back
+    to scanning ``missions_dir`` directly when no usable markers exist.
     """
     nelson_dir = missions_dir.parent
-    active_files = sorted(nelson_dir.glob(".active-*"), reverse=True)
-    for af in active_files:
+    candidates: list[tuple[str, Path]] = []
+    for af in nelson_dir.glob(".active-*"):
         try:
             mission_path = Path(af.read_text(encoding="utf-8").strip())
-            if mission_path.is_dir() and not (mission_path / "stand-down.json").exists():
-                return mission_path
         except OSError:
             continue
+        if mission_path.is_dir() and not (mission_path / "stand-down.json").exists():
+            candidates.append((mission_path.name, mission_path))
+    if candidates:
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        return candidates[0][1]
 
     if not missions_dir.is_dir():
         return None
-    candidates = sorted(
+    fallback = sorted(
         (
             d
             for d in missions_dir.iterdir()
@@ -1675,7 +1680,7 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
         key=lambda d: d.name,
         reverse=True,
     )
-    return candidates[0] if candidates else None
+    return fallback[0] if fallback else None
 
 
 def _read_handoff_packets(mission_dir: Path) -> list[dict]:

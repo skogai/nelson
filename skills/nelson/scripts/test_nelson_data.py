@@ -1441,6 +1441,69 @@ class TestRecover:
         result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
         assert "No active mission" in result.stdout
 
+    def test_recover_picks_most_recent_when_multiple_markers(
+        self, tmp_path: Path
+    ) -> None:
+        """Multiple .active-* markers reference different missions. The
+        marker whose referenced mission directory has the latest timestamp
+        prefix must win, regardless of SESSION_ID lexical order."""
+        # Create the older mission first.
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        old_dir = missions_dir / "2026-04-01_100000_zzzzzzzz"
+        new_dir = missions_dir / "2026-05-06_120000_aaaaaaaa"
+        for d in (old_dir, new_dir):
+            d.mkdir()
+            (d / "fleet-status.json").write_text(
+                json.dumps({"version": 1, "mission": {"status": "underway"}}),
+                encoding="utf-8",
+            )
+
+        # SESSION_IDs sort the *opposite* way to mission timestamps.
+        (nelson_dir / ".active-zzzzzzzz").write_text(
+            str(old_dir), encoding="utf-8"
+        )
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            str(new_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(new_dir)
+
+    def test_recover_skips_marker_whose_directory_is_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """A .active-* marker pointing to a deleted directory must be
+        ignored — the next valid candidate wins."""
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        live_dir = missions_dir / "2026-04-01_100000_aaaaaaaa"
+        live_dir.mkdir()
+        (live_dir / "fleet-status.json").write_text(
+            json.dumps({"version": 1, "mission": {"status": "underway"}}),
+            encoding="utf-8",
+        )
+
+        ghost_dir = missions_dir / "2026-05-06_120000_bbbbbbbb"
+        # Marker references a directory that does not exist.
+        (nelson_dir / ".active-bbbbbbbb").write_text(
+            str(ghost_dir), encoding="utf-8"
+        )
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            str(live_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(live_dir)
+
 
 # ---------------------------------------------------------------------------
 # Handoff Lifecycle
