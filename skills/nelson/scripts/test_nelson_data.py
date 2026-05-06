@@ -521,7 +521,7 @@ class TestEventFleetStatus:
             "task_id=1",
         )
         fs = read_json(mission_dir / "fleet-status.json")
-        assert fs["progress"]["completed"] >= 1
+        assert fs["progress"]["completed"] == 1
         assert fs["progress"]["in_progress"] == 0
 
     def test_blocker_raised_and_resolved_round_trip(
@@ -533,7 +533,7 @@ class TestEventFleetStatus:
             "--type", "blocker_raised", "task_id=1",
         )
         fs = read_json(mission_dir / "fleet-status.json")
-        assert fs["progress"]["blocked"] >= 1
+        assert fs["progress"]["blocked"] == 1
 
         run(
             "event", "--mission-dir", str(mission_dir),

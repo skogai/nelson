@@ -662,8 +662,8 @@ def cmd_event(args: argparse.Namespace, extra: list[str]) -> None:
         "timestamp": _now_iso(),
         "data": data,
     }
-    _append_event(mission_dir, event)
-    _update_fleet_status_from_event(mission_dir, event)
+    event_id = _append_event(mission_dir, event)
+    _update_fleet_status_from_event(mission_dir, event, event_id)
 
     print(f"[nelson-data] Event logged: {event_type} (checkpoint {checkpoint})")
 
@@ -1684,11 +1684,12 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
             continue
         seen_resolved.add(resolved)
         canonical = missions_dir / mission_path.name
-        try:
-            if canonical.is_dir() and canonical.resolve() == resolved:
-                mission_path = canonical
-        except OSError:
-            pass
+        if canonical != mission_path:
+            try:
+                if canonical.is_dir() and canonical.resolve() == resolved:
+                    mission_path = canonical
+            except OSError:
+                pass
         candidates.append((mission_path.name, mission_path))
     if candidates:
         candidates.sort(key=lambda c: c[0], reverse=True)
@@ -1708,13 +1709,14 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
     return fallback[0] if fallback else None
 
 
-def _update_fleet_status_from_event(mission_dir: Path, event: dict) -> None:
+def _update_fleet_status_from_event(
+    mission_dir: Path, event: dict, event_id: int
+) -> None:
     """Apply a state-changing event's delta to fleet-status.json.
 
     Only event types in FLEET_STATUS_EVENT_TYPES update fleet-status; other
-    types are silently ignored. Bumps last_updated and last_event_id.
-    Mission-log is the source of truth for last_event_id (the event was
-    just appended by the caller, so its index is len(events) - 1).
+    types are silently ignored. ``event_id`` is the index returned by
+    ``_append_event`` and is stamped as ``last_event_id``.
     """
     if event.get("type") not in FLEET_STATUS_EVENT_TYPES:
         return
@@ -1724,30 +1726,30 @@ def _update_fleet_status_from_event(mission_dir: Path, event: dict) -> None:
     if fs is None:
         return
 
-    log = _read_json_optional(mission_dir / "mission-log.json") or {}
-    events = log.get("events", [])
-    last_event_id = max(0, len(events) - 1)
-
     progress = dict(fs.get("progress", {}))
+
+    def bump(key: str, delta: int) -> None:
+        progress[key] = max(0, progress.get(key, 0) + delta)
+
     etype = event["type"]
     if etype == "task_started":
-        progress["in_progress"] = progress.get("in_progress", 0) + 1
-        progress["pending"] = max(0, progress.get("pending", 0) - 1)
+        bump("in_progress", +1)
+        bump("pending", -1)
     elif etype == "task_completed":
-        progress["in_progress"] = max(0, progress.get("in_progress", 0) - 1)
-        progress["completed"] = progress.get("completed", 0) + 1
+        bump("in_progress", -1)
+        bump("completed", +1)
     elif etype == "blocker_raised":
-        progress["blocked"] = progress.get("blocked", 0) + 1
+        bump("blocked", +1)
     elif etype == "blocker_resolved":
-        progress["blocked"] = max(0, progress.get("blocked", 0) - 1)
-    # hull_threshold_crossed and relief_on_station bump last_updated and
-    # last_event_id only — squadron/hull rebuilds happen at checkpoint.
+        bump("blocked", -1)
+    # hull_threshold_crossed and relief_on_station refresh freshness fields
+    # only; squadron/hull rebuilds happen at checkpoint.
 
     new_fs = {
         **fs,
         "progress": progress,
         "last_updated": _now_iso(),
-        "last_event_id": last_event_id,
+        "last_event_id": event_id,
     }
     _write_json(fs_path, new_fs)
 
@@ -1795,10 +1797,9 @@ def _compute_fleet_status_staleness(
     pending_count = 0
     last_event_summary: str | None = None
     if isinstance(last_event_id, int):
-        newer = events[last_event_id + 1 :]
-        pending_count = len(newer)
-        if newer:
-            tail = newer[-1]
+        pending_count = max(0, len(events) - last_event_id - 1)
+        if pending_count:
+            tail = events[-1]
             tail_data = tail.get("data", {}) or {}
             tail_id = tail_data.get("task_id")
             label = tail.get("type", "unknown")

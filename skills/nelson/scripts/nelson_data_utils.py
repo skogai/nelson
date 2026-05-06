@@ -69,8 +69,6 @@ VALID_ESTIMATE_OUTCOME_METHODS = frozenset(
 )
 JSON_INDENT = 2
 
-# Event types that mutate fleet-status.json. All other event types are
-# logged to mission-log.json only.
 FLEET_STATUS_EVENT_TYPES = frozenset(
     {
         "task_started",
@@ -81,9 +79,8 @@ FLEET_STATUS_EVENT_TYPES = frozenset(
         "relief_on_station",
     }
 )
+assert FLEET_STATUS_EVENT_TYPES <= VALID_EVENT_TYPES
 
-# Recovery briefings warn when fleet-status is older than this. Hardcoded
-# for v1; not user-configurable.
 FLEET_STATUS_STALENESS_THRESHOLD_SECONDS = 600
 
 
@@ -211,8 +208,8 @@ def _file_lock(lock_path: Path) -> Generator[None, None, None]:
             pass
 
 
-def _append_event(mission_dir: Path, event: dict) -> None:
-    """Append *event* to mission-log.json using read-modify-write."""
+def _append_event(mission_dir: Path, event: dict) -> int:
+    """Append *event* to mission-log.json and return its index."""
     log_path = mission_dir / "mission-log.json"
     lock_path = mission_dir / ".mission-log.lock"
 
@@ -221,6 +218,7 @@ def _append_event(mission_dir: Path, event: dict) -> None:
         new_events = list(log.get("events", [])) + [event]
         new_log = {**log, "events": new_events}
         _write_json(log_path, new_log)
+        return len(new_events) - 1
 
 
 def _append_estimate_outcome(mission_dir: Path, outcome: dict) -> None:
