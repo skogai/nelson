@@ -26,6 +26,8 @@ from nelson_circuit_breakers import (
 )
 from nelson_data_memory import _update_patterns_store, _update_standing_order_stats
 from nelson_data_utils import (
+    FLEET_STATUS_EVENT_TYPES,
+    FLEET_STATUS_STALENESS_THRESHOLD_SECONDS,
     JSON_INDENT,
     VALID_DECISIONS,
     VALID_ESTIMATE_OUTCOME_METHODS,
@@ -661,6 +663,7 @@ def cmd_event(args: argparse.Namespace, extra: list[str]) -> None:
         "data": data,
     }
     _append_event(mission_dir, event)
+    _update_fleet_status_from_event(mission_dir, event)
 
     print(f"[nelson-data] Event logged: {event_type} (checkpoint {checkpoint})")
 
@@ -1681,6 +1684,50 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
         reverse=True,
     )
     return fallback[0] if fallback else None
+
+
+def _update_fleet_status_from_event(mission_dir: Path, event: dict) -> None:
+    """Apply a state-changing event's delta to fleet-status.json.
+
+    Only event types in FLEET_STATUS_EVENT_TYPES update fleet-status; other
+    types are silently ignored. Bumps last_updated and last_event_id.
+    Mission-log is the source of truth for last_event_id (the event was
+    just appended by the caller, so its index is len(events) - 1).
+    """
+    if event.get("type") not in FLEET_STATUS_EVENT_TYPES:
+        return
+
+    fs_path = mission_dir / "fleet-status.json"
+    fs = _read_json_optional(fs_path)
+    if fs is None:
+        return
+
+    log = _read_json_optional(mission_dir / "mission-log.json") or {}
+    events = log.get("events", [])
+    last_event_id = max(0, len(events) - 1)
+
+    progress = dict(fs.get("progress", {}))
+    etype = event["type"]
+    if etype == "task_started":
+        progress["in_progress"] = progress.get("in_progress", 0) + 1
+        progress["pending"] = max(0, progress.get("pending", 0) - 1)
+    elif etype == "task_completed":
+        progress["in_progress"] = max(0, progress.get("in_progress", 0) - 1)
+        progress["completed"] = progress.get("completed", 0) + 1
+    elif etype == "blocker_raised":
+        progress["blocked"] = progress.get("blocked", 0) + 1
+    elif etype == "blocker_resolved":
+        progress["blocked"] = max(0, progress.get("blocked", 0) - 1)
+    # hull_threshold_crossed and relief_on_station bump last_updated and
+    # last_event_id only — squadron/hull rebuilds happen at checkpoint.
+
+    new_fs = {
+        **fs,
+        "progress": progress,
+        "last_updated": _now_iso(),
+        "last_event_id": last_event_id,
+    }
+    _write_json(fs_path, new_fs)
 
 
 def _read_handoff_packets(mission_dir: Path) -> list[dict]:

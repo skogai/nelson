@@ -479,6 +479,85 @@ class TestEvent:
         assert len(started) == 3
 
 
+class TestEventFleetStatus:
+    """cmd_event must update fleet-status.json for state-changing events."""
+
+    def test_task_started_increments_in_progress_and_decrements_pending(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        # Baseline: setup_mission_with_task leaves task-1 pending.
+        fs_before = read_json(mission_dir / "fleet-status.json")
+        baseline_in_progress = fs_before["progress"]["in_progress"]
+        baseline_pending = fs_before["progress"]["pending"]
+
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_started",
+            "task_id=1",
+        )
+
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["in_progress"] == baseline_in_progress + 1
+        assert fs["progress"]["pending"] == max(0, baseline_pending - 1)
+        assert "last_updated" in fs
+        assert "last_event_id" in fs
+
+    def test_task_completed_increments_completed_and_decrements_in_progress(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_started",
+            "task_id=1",
+        )
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_completed",
+            "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["completed"] >= 1
+        assert fs["progress"]["in_progress"] == 0
+
+    def test_blocker_raised_and_resolved_round_trip(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "blocker_raised", "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["blocked"] >= 1
+
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "blocker_resolved", "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["blocked"] == 0
+
+    def test_non_state_changing_event_does_not_touch_fleet_status(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        before = read_json(mission_dir / "fleet-status.json")
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "commendation", "ship=HMS Argyll",
+        )
+        after = read_json(mission_dir / "fleet-status.json")
+        # progress, last_updated, and last_event_id are untouched.
+        assert after.get("progress") == before.get("progress")
+        assert after.get("last_updated") == before.get("last_updated")
+        assert after.get("last_event_id") == before.get("last_event_id")
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint
 # ---------------------------------------------------------------------------
