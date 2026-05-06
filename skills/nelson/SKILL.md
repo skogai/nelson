@@ -78,7 +78,9 @@ Read `references/the-estimate.md` for the full thought process, and use `referen
 6. **Coordination** — What depends on what? What runs in parallel?
 7. **Control** — Where are the quality gates and intervention points?
 
-**Q1 is the only question that dispatches sub-agents.** Send one or more Explore agents into the codebase with a scouting brief derived from the Sailing Orders; synthesise their findings into the Reconnaissance section.
+**Q1 dispatches Explore sub-agents.** Send one or more Explore agents into the codebase with a scouting brief derived from the Sailing Orders; synthesise their findings into the Reconnaissance section. Q1 must follow the Explorer discipline rules in `references/the-estimate.md` (multiple focused dispatches, structured summaries, no raw file contents).
+
+**Q2–Q3 and Q4–Q7 are delegated in two separate sub-agent dispatches** so Q2–Q7 reasoning does not consume admiral context. The first dispatch (Estimate-Drafter) produces commander's intent and effects after Q1 and before Checkpoint 2; the second dispatch (Estimate-Planner) produces terrain, forces, coordination, and control after Checkpoint 2 approves intent and effects. Both subagents inherit the admiral's model; The Estimate phase is exempt from cost-savings model selection. See `references/the-estimate.md` for the briefing contents and dispatch templates.
 
 **Two checkpoints bracket the analytical work.** After Q1, present findings to the user and invite correction or reframing. After Q3, present intent and effects for substantive approval before planning *how*. Q4-Q7 flow from approved effects and are the admiral's professional judgement — work through them without interrupting the user. Collapse both checkpoints into a single final review only when all three conditions hold: sailing orders specify outcome, metric, and deadline; Q1 reveals no surprises; the work lands in a single subsystem. See `references/the-estimate.md` for full checkpoint discipline.
 
@@ -121,6 +123,7 @@ Reference `references/admiralty-templates/battle-plan.md` for the battle plan te
 - `press-ganged-navigator.md`: Is the red-cell navigator being assigned implementation work?
 - `admiral-at-the-helm.md`: Does the battle plan assign any implementation work (excluding permitted read-only recombination) to the admiral?
 - `wrong-ensign.md`: Do the planned coordination tools match the selected execution mode?
+- `pulling-the-oar.md`: For tasks that involve dispatched subagents, is the failure-recovery plan to fix the brief and re-dispatch, rather than absorb the work into senior context?
 
 If any answer triggers a standing order, you MUST apply the corrective action and re-answer the question before proceeding. For situations not covered by this gate, consult the Standing Orders table below.
 
@@ -267,6 +270,7 @@ If the task is complete and no pending task depends on it, proceed to shutdown p
         - `all-hands-on-deck.md`: Has any ship mustered crew roles that are idle or unjustified?
         - `battalion-ashore.md`: Has any captain deployed marines for crew work or sustained tasks?
         - `wrong-ensign.md`: Is the admiral or any captain using tools from the wrong execution mode?
+        - `pulling-the-oar.md`: Has any senior agent (admiral or captain) absorbed work from a failed subagent dispatch instead of fixing the brief and re-dispatching?
     - **Write the quarterdeck report to disk** at `{mission-dir}/quarterdeck-report.md` at every checkpoint using `references/admiralty-templates/quarterdeck-report.md`. Do not skip this when hull is Green — compaction can occur at any time and the on-disk report is the only recovery point. Before writing, if `quarterdeck-report.md` already exists in `{mission-dir}`, find all files matching glob pattern `quarterdeck-report-[0-9]*.md`, determine N as one greater than the highest N found (0 if none exist), rename the existing file to `quarterdeck-report-N.md`, then write the new report. This keeps the latest report at the canonical path while preserving history.
     - **Structured data capture:** Run `python3 .claude/skills/nelson/scripts/nelson-data.py checkpoint --mission-dir {mission-dir} --pending N --in-progress N --completed N ...` with current progress, budget, hull, and decision data. Between checkpoints, run `python3 .claude/skills/nelson/scripts/nelson-data.py event --mission-dir {mission-dir} --type <event_type> ...` for state changes (task completions, blockers, hull threshold crossings, standing order violations). See `references/structured-data.md` for event types and arguments.
     - Check `TaskList` for any tasks with description prefixed `[AWAITING-ADMIRALTY]:`. If any exist, surface the ask to Admiralty immediately — do not batch to the next checkpoint.
