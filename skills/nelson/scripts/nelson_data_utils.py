@@ -69,6 +69,23 @@ VALID_ESTIMATE_OUTCOME_METHODS = frozenset(
 )
 JSON_INDENT = 2
 
+# Event types that mutate fleet-status.json. All other event types are
+# logged to mission-log.json only.
+FLEET_STATUS_EVENT_TYPES = frozenset(
+    {
+        "task_started",
+        "task_completed",
+        "blocker_raised",
+        "blocker_resolved",
+        "hull_threshold_crossed",
+        "relief_on_station",
+    }
+)
+
+# Recovery briefings warn when fleet-status is older than this. Hardcoded
+# for v1; not user-configurable.
+FLEET_STATUS_STALENESS_THRESHOLD_SECONDS = 600
+
 
 # ---------------------------------------------------------------------------
 # Helpers — pure functions (no side effects)
