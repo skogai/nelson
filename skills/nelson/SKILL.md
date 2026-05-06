@@ -345,6 +345,7 @@ Consult the specific standing order that matches the situation.
 | Captain completed autonomous work and needs human action to continue | `references/standing-orders/awaiting-admiralty.md` |
 | Agent completed task with no remaining work in the dependency graph | `references/standing-orders/paid-off.md` |
 | Using tools from the wrong execution mode | `references/standing-orders/wrong-ensign.md` |
+| Senior absorbing failed subagent's work instead of fixing the brief | `references/standing-orders/pulling-the-oar.md` |
 
 ## Damage Control
 
