@@ -1658,16 +1658,38 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
     skips ones that are missing or already stood down, and returns the
     candidate with the latest timestamp-prefixed directory name. Falls back
     to scanning ``missions_dir`` directly when no usable markers exist.
+
+    Multiple markers may point at the same mission directory using different
+    path forms (e.g., a relative ``.nelson/missions/...`` written by ``init``
+    and an absolute path written by another caller). Candidates are
+    deduplicated by resolved path and rewritten to the canonical form under
+    ``missions_dir`` when they refer to the same directory, so the result is
+    independent of filesystem glob ordering.
     """
     nelson_dir = missions_dir.parent
+    seen_resolved: set[Path] = set()
     candidates: list[tuple[str, Path]] = []
     for af in nelson_dir.glob(".active-*"):
         try:
             mission_path = Path(af.read_text(encoding="utf-8").strip())
         except OSError:
             continue
-        if mission_path.is_dir() and not (mission_path / "stand-down.json").exists():
-            candidates.append((mission_path.name, mission_path))
+        if not mission_path.is_dir() or (mission_path / "stand-down.json").exists():
+            continue
+        try:
+            resolved = mission_path.resolve()
+        except OSError:
+            continue
+        if resolved in seen_resolved:
+            continue
+        seen_resolved.add(resolved)
+        canonical = missions_dir / mission_path.name
+        try:
+            if canonical.is_dir() and canonical.resolve() == resolved:
+                mission_path = canonical
+        except OSError:
+            pass
+        candidates.append((mission_path.name, mission_path))
     if candidates:
         candidates.sort(key=lambda c: c[0], reverse=True)
         return candidates[0][1]

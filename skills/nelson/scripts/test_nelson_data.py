@@ -1491,6 +1491,37 @@ class TestRecover:
         assert briefing["mission_dir"] == str(mission_dir)
         assert len(briefing["handoff_packets"]) == 1
 
+    def test_recover_dedupes_markers_pointing_at_same_mission(
+        self, tmp_path: Path
+    ) -> None:
+        """Two markers pointing at the same mission directory using different
+        path forms (relative vs absolute) must resolve to a single canonical
+        mission_dir. Otherwise, glob ordering on different filesystems makes
+        recover non-deterministic."""
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        live_dir = missions_dir / "2026-05-06_120000_aaaaaaaa"
+        live_dir.mkdir()
+        (live_dir / "fleet-status.json").write_text(
+            json.dumps({"version": 1, "mission": {"status": "underway"}}),
+            encoding="utf-8",
+        )
+
+        # Two markers — one absolute, one relative — both point at live_dir.
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            ".nelson/missions/2026-05-06_120000_aaaaaaaa", encoding="utf-8"
+        )
+        (nelson_dir / ".active-zzzzzzzz").write_text(
+            str(live_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(live_dir)
+
     def test_recover_json_output(self, tmp_path: Path) -> None:
         mission_dir = setup_mission_with_task(tmp_path)
         result = run("recover", "--mission-dir", str(mission_dir), "--format", "json")
