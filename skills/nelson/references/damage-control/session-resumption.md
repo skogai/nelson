@@ -11,6 +11,7 @@ Use when a session is interrupted (context limit, crash, timeout) and work must 
    - These JSON files provide faster, more reliable state recovery than re-parsing quarterdeck report prose.
    - **Fallback:** If no JSON files are present, read `{mission-dir}/quarterdeck-report.md` to establish last known state.
    - **Sub-fallback:** If the canonical `quarterdeck-report.md` is also missing (e.g. crash during report rotation), check for `{mission-dir}/quarterdeck-report-N.md` files (where N is a number). Use the file with the highest N value — it contains the most recent checkpoint data. The same fallback applies to `captains-log.md` / `captains-log-N.md`.
+   - The recovery briefing surfaces a "Fleet status may be stale" warning when `last_updated` is older than 10 minutes or when `mission-log.json` has events newer than `last_event_id`. When the warning appears, verify in-progress task state against handoff packets and file state before resuming — do not trust the cached progress counters.
 4. List all tasks and their statuses: `pending`, `in_progress`, `completed`.
 5. For each `in_progress` task, verify partial outputs against the task deliverable. If a handoff packet exists for the task, use its `state.partial_outputs` and `state.next_steps` to guide verification.
 6. Discard any unverified or incomplete outputs that cannot be confirmed correct.
