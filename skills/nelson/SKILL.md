@@ -107,7 +107,7 @@ When The Estimate has been conducted, the Battle Plan inherits the analytical wo
 - For each task, consciously mark `admiralty-action-required: yes` or `no`.
 - Keep one task in progress per agent unless the mission explicitly requires multitasking.
 
-Reference `references/admiralty-templates/battle-plan.md` for the battle plan template and `references/admiralty-templates/ship-manifest.md` for the ship manifest.
+Reference `references/admiralty-templates/battle-plan.md` for the schema of each captain's brief and `references/admiralty-templates/ship-manifest.md` for the ship manifest.
 
 **Battle Plan Gate — Standing Order Check:** You MUST NOT finalize task assignments until each question below is answered in writing and any triggered standing order remedy has been applied. Show your reasoning — a bare yes/no is not sufficient.
 - `becalmed-fleet.md`: Should this mission use single-session instead of multi-agent? If yes, skip Step 4 — single-session has no squadron to form.
@@ -123,6 +123,8 @@ Reference `references/admiralty-templates/battle-plan.md` for the battle plan te
 - `wrong-ensign.md`: Do the planned coordination tools match the selected execution mode?
 
 If any answer triggers a standing order, you MUST apply the corrective action and re-answer the question before proceeding. For situations not covered by this gate, consult the Standing Orders table below.
+
+**Persist the drafted plan.** Before proceeding to Step 4, write the complete battle plan to `{mission-dir}/battle-plan.md` using the template at `references/admiralty-templates/battle-plan.md`. Include the commander's intent verbatim from Estimate §2, each task brief in template form, and the Standing Order Check answers. **This is a safe compaction point — admiral state is now fully on disk.**
 
 **Structured Data Capture:** Task registration requires owners, which are assigned in Step 4. No `nelson-data.py` script calls at this step.
 
@@ -367,6 +369,7 @@ Consult the specific procedure that matches the situation.
 ## Admiralty Doctrine
 
 - Include this instruction in any admiral's compaction summary: Re-read the quarterdeck report at the mission directory path to recover `{mission-dir}`. If the path is unknown, read `.nelson/.active-{SESSION_ID}` if you know the SESSION_ID, otherwise list `.nelson/missions/` and present the options to the user for selection. Then re-read `references/standing-orders/admiral-at-the-helm.md` to confirm you are in coordination role.
+- Treat `/compact` as safe at any phase boundary (after Step 1, 2, 3, 4, and at every quarterdeck checkpoint in Step 6). The narrow unsafe window is inside Step 5 — between user approval and the admiral's `permission_granted` / phase advance / agent spawn turn.
 - Optimize for mission throughput, not equal work distribution.
 - Prefer replacing stalled agents over waiting on undefined blockers.
 - Recognise strong performance; motivation compounds across missions.

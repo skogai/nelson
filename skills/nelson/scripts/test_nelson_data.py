@@ -11,6 +11,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from conftest import (
     add_squadron,
     add_task,
@@ -19,6 +21,15 @@ from conftest import (
     read_json,
     run,
 )
+from nelson_data_lifecycle import PHASE_RECOVERY_GUIDANCE
+
+
+def _set_mission_phase(mission_dir: Path, phase: str) -> None:
+    """Test helper: rewrite fleet-status.json with the requested mission.phase."""
+    fs_path = mission_dir / "fleet-status.json"
+    fs = json.loads(fs_path.read_text(encoding="utf-8"))
+    fs.setdefault("mission", {})["phase"] = phase
+    fs_path.write_text(json.dumps(fs, indent=2), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -1428,6 +1439,41 @@ class TestRecover:
         result = run("recover", "--mission-dir", str(mission_dir), "--format", "text")
         assert "[nelson-data] Recovery briefing" in result.stdout
         assert "HMS Argyll" in result.stdout
+        assert "Phase: " in result.stdout
+
+    def test_recover_includes_phase_in_briefing(self, tmp_path: Path) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        result = run("recover", "--mission-dir", str(mission_dir))
+        briefing = json.loads(result.stdout)
+        assert "current_phase" in briefing
+        assert briefing["current_phase"]
+
+    @pytest.mark.parametrize("phase", sorted(PHASE_RECOVERY_GUIDANCE.keys()))
+    def test_recover_phase_specific_actions(
+        self, tmp_path: Path, phase: str
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        # Pre-create battle-plan.md so phases that check for it don't add a warning.
+        (mission_dir / "battle-plan.md").write_text("# Battle Plan\n", encoding="utf-8")
+        _set_mission_phase(mission_dir, phase)
+        result = run("recover", "--mission-dir", str(mission_dir))
+        briefing = json.loads(result.stdout)
+        assert briefing["current_phase"] == phase
+        assert briefing["recommended_actions"] == PHASE_RECOVERY_GUIDANCE[phase]
+
+    def test_recover_warns_when_battle_plan_md_missing(self, tmp_path: Path) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        _set_mission_phase(mission_dir, "BATTLE_PLAN")
+        # Ensure battle-plan.md is absent
+        bp_md = mission_dir / "battle-plan.md"
+        if bp_md.exists():
+            bp_md.unlink()
+        result = run("recover", "--mission-dir", str(mission_dir))
+        briefing = json.loads(result.stdout)
+        assert any(
+            "battle-plan.md is missing" in action
+            for action in briefing["recommended_actions"]
+        ), briefing["recommended_actions"]
 
     def test_recover_no_active_mission_silent(self, tmp_path: Path) -> None:
         missions_dir = tmp_path / ".nelson" / "missions"
@@ -1473,6 +1519,10 @@ class TestHandoffLifecycle:
                 "--relief-entry", "HMS Argyll:context_exhaustion:2026-04-08T14:30:00Z",
             ],
         )
+
+        # Handoffs happen during UNDERWAY — recovery should fall back to
+        # handoff-packet-derived actions in that phase.
+        _set_mission_phase(mission_dir, "UNDERWAY")
 
         # Recover
         result = run("recover", "--mission-dir", str(mission_dir))
