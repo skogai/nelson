@@ -652,3 +652,86 @@ class TestSessionCheck:
         _write_marker(tmp_path, "/admiral.jsonl")
         code = _run(cmd_session_check, {}, cwd=str(tmp_path))
         assert code == 0
+
+    def test_empty_marker_allows(self, tmp_path: Path) -> None:
+        """Empty marker (interrupted write) must fail-open — never reject."""
+        _make_mission(tmp_path, mode="subagents")
+        nelson_dir = tmp_path / ".nelson"
+        (nelson_dir / ADMIRAL_SESSION_MARKER).write_text("", encoding="utf-8")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/admiral.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_unknown_mode_allows(self, tmp_path: Path) -> None:
+        """Unknown/future modes must fail-open: only explicit captain modes gate."""
+        _make_mission(tmp_path, mode="future-mode-xyz")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/captain.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# Preflight admiral-marker backfill
+# ---------------------------------------------------------------------------
+
+
+class TestPreflightAdmiralMarkerBackfill:
+    def test_backfill_writes_marker_when_missing(self, tmp_path: Path) -> None:
+        """Preflight backfills admiral marker when SessionStart missed it."""
+        _make_mission(tmp_path, tasks=[
+            {
+                "id": "t1",
+                "name": "Task 1",
+                "owner": "HMS Daring",
+                "station_tier": 1,
+                "file_ownership": ["src/auth.py"],
+            },
+        ])
+        marker = tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER
+        assert not marker.exists()
+        code = _run(
+            cmd_preflight,
+            {
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "general-purpose"},
+                "transcript_path": "/transcripts/admiral.jsonl",
+            },
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+        assert marker.is_file()
+        assert marker.read_text(encoding="utf-8").strip() == "/transcripts/admiral.jsonl"
+
+    def test_backfill_does_not_overwrite_existing_marker(
+        self, tmp_path: Path,
+    ) -> None:
+        """Existing marker is preserved — only writes when missing."""
+        _make_mission(tmp_path, tasks=[
+            {
+                "id": "t1",
+                "name": "Task 1",
+                "owner": "HMS Daring",
+                "station_tier": 1,
+                "file_ownership": ["src/auth.py"],
+            },
+        ])
+        marker = tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER
+        marker.write_text("/original/admiral.jsonl\n", encoding="utf-8")
+        code = _run(
+            cmd_preflight,
+            {
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "general-purpose"},
+                "transcript_path": "/different/path.jsonl",
+            },
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+        assert marker.read_text(encoding="utf-8").strip() == "/original/admiral.jsonl"

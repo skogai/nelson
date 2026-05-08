@@ -42,6 +42,8 @@ from typing import Any, NoReturn
 
 
 ADMIRAL_SESSION_MARKER = "admiral.session"
+# NOTE: must stay in sync with
+# skills/nelson/scripts/nelson_data_utils.py:ADMIRAL_SESSION_MARKER.
 
 
 def _read_stdin() -> dict[str, Any]:
@@ -687,19 +689,23 @@ def cmd_session_init(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+CAPTAIN_GATED_MODES = frozenset({"subagents", "single-session"})
+
+
 def cmd_session_check(args: argparse.Namespace) -> None:
     """PreToolUse:TaskCreate gate using admiral session marker.
 
-    Allows TaskCreate when:
-      - no active Nelson mission (graceful degradation)
-      - mode is agent-team (TaskCreate is the shared coordination surface)
-      - admiral.session marker missing (fail-open, never had a chance to record)
-      - payload transcript_path matches the marker (admiral)
-      - payload transcript_path missing (defensive fail-open)
+    Rejects with wrong-ensign violation only when mode is in
+    CAPTAIN_GATED_MODES (subagents, single-session) AND the payload
+    transcript_path does not match the recorded admiral transcript
+    (i.e. captain subagent context).
 
-    Rejects with wrong-ensign violation only when mode is subagents or
-    single-session AND the payload transcript_path does not match the
-    recorded admiral transcript (i.e. captain subagent context).
+    Fails open in every other case:
+      - no active Nelson mission (graceful degradation)
+      - mode not in CAPTAIN_GATED_MODES (agent-team, future modes)
+      - admiral.session marker missing (never had a chance to record)
+      - admiral.session marker empty (interrupted write)
+      - payload transcript_path missing (defensive)
     """
     payload = _read_stdin()
     ctx = _load_mission_context(payload)
@@ -708,7 +714,7 @@ def cmd_session_check(args: argparse.Namespace) -> None:
 
     _, battle_plan = ctx
     mode = _get_mode(battle_plan)
-    if mode == "agent-team":
+    if mode not in CAPTAIN_GATED_MODES:
         _allow()
 
     nelson_dir = Path(payload.get("cwd", ".")) / ".nelson"
@@ -719,6 +725,9 @@ def cmd_session_check(args: argparse.Namespace) -> None:
     try:
         admiral_transcript = marker.read_text(encoding="utf-8").strip()
     except OSError:
+        _allow()
+
+    if not admiral_transcript:
         _allow()
 
     payload_transcript = payload.get("transcript_path", "").strip()
