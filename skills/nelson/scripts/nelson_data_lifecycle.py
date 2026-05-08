@@ -92,7 +92,7 @@ PHASE_RECOVERY_GUIDANCE: dict[str, list[str]] = {
 }
 
 
-_BATTLE_PLAN_MD_REQUIRED_PHASES: frozenset[str] = frozenset(
+BATTLE_PLAN_MD_REQUIRED_PHASES: frozenset[str] = frozenset(
     {"BATTLE_PLAN", "FORMATION", "PERMISSION"}
 )
 
@@ -1766,10 +1766,13 @@ def _build_recovery_briefing(
     )
 
     recommended_actions: list[str] = []
+    # Phase guidance takes precedence over handoff packets when both exist —
+    # an anomalous mid-flight state, but if it occurs the phase wins because
+    # it reflects the admiral's last recorded position in the workflow.
     if current_phase in PHASE_RECOVERY_GUIDANCE:
         recommended_actions = list(PHASE_RECOVERY_GUIDANCE[current_phase])
         if (
-            current_phase in _BATTLE_PLAN_MD_REQUIRED_PHASES
+            current_phase in BATTLE_PLAN_MD_REQUIRED_PHASES
             and not (mission_dir / "battle-plan.md").is_file()
         ):
             recommended_actions.insert(

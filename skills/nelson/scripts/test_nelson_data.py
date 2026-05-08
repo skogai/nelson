@@ -21,7 +21,10 @@ from conftest import (
     read_json,
     run,
 )
-from nelson_data_lifecycle import PHASE_RECOVERY_GUIDANCE
+from nelson_data_lifecycle import (
+    BATTLE_PLAN_MD_REQUIRED_PHASES,
+    PHASE_RECOVERY_GUIDANCE,
+)
 
 
 def _set_mission_phase(mission_dir: Path, phase: str) -> None:
@@ -1461,9 +1464,12 @@ class TestRecover:
         assert briefing["current_phase"] == phase
         assert briefing["recommended_actions"] == PHASE_RECOVERY_GUIDANCE[phase]
 
-    def test_recover_warns_when_battle_plan_md_missing(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("phase", sorted(BATTLE_PLAN_MD_REQUIRED_PHASES))
+    def test_recover_warns_when_battle_plan_md_missing(
+        self, tmp_path: Path, phase: str
+    ) -> None:
         mission_dir = setup_mission_with_task(tmp_path)
-        _set_mission_phase(mission_dir, "BATTLE_PLAN")
+        _set_mission_phase(mission_dir, phase)
         # Ensure battle-plan.md is absent
         bp_md = mission_dir / "battle-plan.md"
         if bp_md.exists():
