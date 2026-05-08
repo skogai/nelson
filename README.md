@@ -576,6 +576,8 @@ We are actively tracking multi-agent developments across these platforms. If you
 
 ## Star History
 
+On a successful Stand Down, Nelson asks once whether you'd like to star the repo on GitHub. The answer is recorded in `~/.nelson/prefs.json` (`{"star_asked": true}`) and the prompt never repeats — across all your Nelson projects. To skip permanently without seeing the prompt: `mkdir -p ~/.nelson && echo '{"star_asked": true}' > ~/.nelson/prefs.json`.
+
 <a href="https://star-history.com/#harrymunro/nelson&Date">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=harrymunro/nelson&type=Date&theme=dark" />

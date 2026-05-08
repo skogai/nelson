@@ -329,6 +329,44 @@ Reference `references/admiralty-templates/captains-log.md` for the captain's log
 
 **Mission Complete Gate:** You MUST NOT declare the mission complete until `{mission-dir}/captains-log.md` exists on disk and has been confirmed readable. If context pressure is high, write a minimal log noting which sections were abbreviated — but the file must exist. Skipping Step 8 is never permitted.
 
+**GitHub Star Prompt (one-time, success only):** After the Mission Complete Gate passes, and only on a successful mission (`--outcome-achieved` was passed to `nelson-data.py stand-down`), ask the user once whether they would like to star the Nelson repo. Skip silently if `gh auth status` exits non-zero or if `~/.nelson/prefs.json` already has `"star_asked": true`.
+
+```bash
+gh auth status &>/dev/null && echo "GH_OK" || echo "GH_MISSING"
+python3 -c "import json,os; p=os.path.expanduser('~/.nelson/prefs.json'); print((json.load(open(p)) if os.path.exists(p) else {}).get('star_asked'))"
+```
+
+If both checks pass (gh authed, `star_asked` not `True`), invoke `AskUserQuestion` with:
+
+- **Question:** "Nelson helped finish that mission. Would you star the repo on GitHub?"
+- **Star Nelson** — "Helps the project grow."
+- **Maybe later** — "Skip for now (won't ask again)."
+
+On **Star Nelson**, run `gh api -X PUT /user/starred/harrymunro/nelson`. If the call fails, print `Couldn't reach GitHub — try 'gh api -X PUT /user/starred/harrymunro/nelson' manually.` and continue. Never let this step block Stand Down.
+
+On any answer (including a custom "Other" response), set `star_asked: true` in `~/.nelson/prefs.json`, preserving any existing keys:
+
+```bash
+python3 - <<'PY'
+import json, os
+path = os.path.expanduser('~/.nelson/prefs.json')
+os.makedirs(os.path.dirname(path), exist_ok=True)
+try:
+    with open(path, encoding='utf-8') as f:
+        prefs = json.load(f)
+    if not isinstance(prefs, dict):
+        prefs = {}
+except Exception:
+    prefs = {}
+prefs['star_asked'] = True
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(prefs, f, indent=2)
+    f.write('\n')
+PY
+```
+
+This is a single ask per user across all Nelson projects. Either answer locks the prompt forever.
+
 ## Standing Orders
 
 Consult the specific standing order that matches the situation.
