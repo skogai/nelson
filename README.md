@@ -10,7 +10,7 @@
 A Claude Code skill that organises multi-agent work into structured naval operations: sailing orders define the mission, captains command parallel workstreams, action stations enforce risk-appropriate controls, and a captain's log captures every decision for audit.
 
 <!-- markdownlint-disable-next-line MD036 -->
-*4 risk tiers · 10 damage control procedures · 10 mission templates · 7 crew roles · 15 standing orders*
+*4 risk tiers · 11 damage control procedures · 11 mission templates · 7 crew roles · 16 standing orders*
 
 <p align="center">
   <img src="docs/images/1024px-Young_Nelson-min.jpg" alt="Captain Horatio Nelson" width="500">
@@ -72,7 +72,7 @@ Most agent orchestration tools focus on starting missions. Nelson focuses on com
 Nelson gives your missions a shared vocabulary: "action stations" instead of "risk tier escalation", "hull integrity" instead of "context window consumption", "man overboard" instead of "stuck agent replacement". The names stick. So do the habits.
 
 - **Risk-gated execution** — Four station tiers (Patrol through Trafalgar) classify every task before it runs. High-risk work requires human confirmation; low-risk work flows without ceremony.
-- **Damage control built in** — Ten named procedures for stuck agents, context exhaustion, faulty output, budget overruns, and mission abort. These are protocols, not improvisation.
+- **Damage control built in** — Eleven named procedures for stuck agents, context exhaustion, faulty output, budget overruns, automated alarms, and mission abort. These are protocols, not improvisation.
 - **A decision log by default** — Captain's log, quarterdeck reports, and turnover briefs are written as the mission runs. Every decision is auditable after the session ends.
 
 Nelson coordinates its own development — recent releases have been planned and executed as Nelson missions.
@@ -152,10 +152,6 @@ Ships are named from real Royal Navy warships, matched roughly to task weight: f
 
 Squadron size caps at 10 squadron-level agents (admiral, captains, red-cell navigator). Crew are additional — up to 4 per ship. If a task needs more crew, split it into two ships.
 
-Here's an example of the crew in action: we create four captains. Two of the captains are single-crew (minimum, since captains don't do the work themselves) and two of them are two-crew. So we have 11 agents working together in total:
-
-https://github.com/user-attachments/assets/f3bafd06-790e-44a0-9061-7d1fd666b445
-
 ### Action stations (risk tiers)
 
 Every task is classified into a risk tier before execution. Higher tiers require more controls:
@@ -194,7 +190,9 @@ Most agent frameworks assume the happy path. Nelson includes battle-tested proce
 
 The token counts come from the API usage data that Claude Code already records on every assistant turn — no estimation heuristics, no paid APIs, no external dependencies. A utility script (`scripts/count-tokens.py`) extracts the data and produces damage reports.
 
-Other damage control procedures: man overboard (stuck agent replacement), session resumption (picking up after interruption), partial rollback (reverting faulty work), crew overrun (budget recovery), scuttle and reform (mission abort), and escalation (chain of command).
+**Circuit breakers** (`nelson_circuit_breakers.py`) layer automated, threshold-based alarms on top of the admiral's checkpoint rhythm. Hull integrity, budget burn, cost-per-task, consecutive blockers, and idle timeouts are evaluated at every quarterdeck checkpoint and on `TeammateIdle` hook fires. When a threshold is crossed, an advisory event is appended to the mission log and surfaced to the admiral, who decides the remedy — circuit breakers do not auto-abort.
+
+Other damage control procedures: man overboard (stuck agent replacement), session resumption (picking up after interruption), partial rollback (reverting faulty work), crew overrun (budget recovery), scuttle and reform (mission abort), comms failure (agent-team infrastructure recovery), session hygiene (clean start procedure), and escalation (chain of command).
 
 ### Conflict radar
 
@@ -221,7 +219,7 @@ Plugin installs auto-discover `hooks/hooks.json` and wire these up with no user 
 
 ### Cross-mission intelligence
 
-Nelson accumulates learning across missions in `.nelson/memory/`. Each completed mission feeds a persistent pattern library (`patterns.json`) and standing-order violation stats (`standing-order-stats.json`). Four `nelson-data.py` subcommands expose this:
+Nelson accumulates learning across missions in `.nelson/memory/`. Each completed mission feeds a persistent pattern library (`patterns.json`) and standing-order violation stats (`standing-order-stats.json`). Five `nelson-data.py` subcommands expose this:
 
 - **`brief`** — pre-mission intelligence brief: relevant patterns, win rate, standing order hot spots, and context-matched precedents drawn from prior missions.
 - **`analytics`** — focused metric queries (`success-rate`, `standing-orders`, `efficiency`) with text or JSON output.
@@ -239,8 +237,11 @@ Once every ship has reported on Stand Down, the admiral produces a fleet-wide sy
 The skill includes structured templates for consistent output across missions:
 
 - **Sailing Orders** — Mission definition with outcome, constraints, scope, and stop criteria
+- **Estimate** — Seven-question analytical scaffold (reconnaissance, intent, effects, terrain, forces, coordination, control) used between Sailing Orders and Battle Plan
 - **Battle Plan** — Task breakdown with owners, dependencies, threat tiers, and validation requirements
 - **Ship Manifest** — Captain's crew plan with ship name, crew roles, sub-tasks, and budget
+- **Crew Briefing** — Per-captain deployment brief with mission context, role, ship, and acceptance criteria
+- **Marine Deployment Brief** — Detachment briefing for Royal Marines (recce, assault, sapper) with objective, scope, and reporting expectations
 - **Quarterdeck Report** — Checkpoint status with progress, blockers, budget tracking, and risk updates
 - **Damage Report** — JSON format for hull integrity reporting with token counts and status
 - **Turnover Brief** — Handover document for relief on station with progress log, running plot, and relief chain
@@ -313,18 +314,14 @@ Then commit `.claude/skills/nelson/` to version control so your team can use it.
 <details>
 <summary>Updating</summary>
 
-If you have used `/plugin marketplace add` to install you can run `/plugin`, arrow over to "Marketplaces", select "nelson-marketplace" and then "Enable auto-updates".
-
-If you not enabled auto-updates you can update the marketplace with: "Marketplaces" -> "nelson-marketplace" -> "Update marketplace".
-
-If those steps don't seem to be working it is best to remove the marketplace ("Marketplaces" -> "nelson-marketplace" -> "Remove marketplace") and re-install so Claude updates the other files it keeps track of concerning marketplaces and plugins.
+For plugin installs, run `/plugin` and either enable auto-updates on `nelson-marketplace` or trigger an update from the marketplace menu. From the command line:
 
 ```
 /plugin marketplace update nelson-marketplace
 /plugin install nelson@nelson-marketplace
 ```
 
-If you have installed by copying into skills/ at user or project level then you will need to remove the skills/nelson/ directory and run a `Manual install` again.
+If updates aren't taking effect, remove and re-add the marketplace. For manual installs, delete `skills/nelson/` and repeat the manual install.
 
 </details>
 
@@ -385,10 +382,10 @@ the API layer, frontend, and test suite
 
 ### Go maximal
 
-For the highest-capability run — Opus 4.6 agents, fully crewed ships, maximum coordination:
+For the highest-capability run — Opus 4.7 agents, fully crewed ships, maximum coordination:
 
 ```
-Use an agent team with Nelson and Opus 4.6 agents with fully crewed ships
+Use an agent team with Nelson and Opus 4.7 agents with fully crewed ships
 to deliver the new billing integration
 ```
 
@@ -417,17 +414,7 @@ You can also invoke it directly with the `/nelson` slash command if you prefer.
 
 ## Customisation
 
-### Modify templates
-
-Edit the individual template files in `references/admiralty-templates/` to match your team's reporting style. The templates use plain text format — adjust fields, add sections, or remove what you don't need.
-
-### Adjust risk tiers
-
-Edit `references/action-stations.md` to change what controls are required at each station level. For example, you might require red-cell review at Station 1 instead of Station 2 for a security-sensitive project.
-
-### Change team sizing
-
-Edit `references/squadron-composition.md` to adjust the decision matrix or default team sizes.
+Edit files under `skills/nelson/references/` to adapt Nelson to your team — `admiralty-templates/` for reporting style, `action-stations.md` for risk-tier controls, `squadron-composition.md` for team sizing rules.
 
 ## Plugin file structure
 
@@ -439,12 +426,13 @@ skills/nelson/
 ├── SKILL.md              # Main skill instructions (entrypoint)
 ├── references/           # Supporting docs loaded on demand
 │   ├── action-stations.md        # Risk tier definitions
-│   ├── admiralty-templates/      # 10 structured templates
+│   ├── admiralty-templates/      # 11 structured templates
 │   ├── crew-roles.md             # Crew role definitions & ship names
-│   ├── damage-control/           # 10 recovery procedures
-│   ├── standing-orders/          # 15 anti-pattern guards
+│   ├── damage-control/           # 11 recovery procedures
+│   ├── standing-orders/          # 16 anti-pattern guards
+│   ├── the-estimate.md           # 7 Question Maritime Tactical Estimate reference
 │   └── squadron-composition.md   # Mode selection & team sizing
-└── scripts/              # nelson-data.py, conflict scan, tests
+└── scripts/              # nelson-data.py, conflict scan, circuit breakers, tests
 ```
 
 <details>
@@ -468,6 +456,7 @@ skills/nelson/
 │   │   ├── captains-log.md
 │   │   ├── crew-briefing.md
 │   │   ├── damage-report.md
+│   │   ├── estimate.md
 │   │   ├── marine-deployment-brief.md
 │   │   ├── quarterdeck-report.md
 │   │   ├── red-cell-review.md
@@ -477,6 +466,7 @@ skills/nelson/
 │   ├── commendations.md                       # Recognition signals and correction guidance
 │   ├── crew-roles.md                         # Crew role definitions, ship names, sizing
 │   ├── damage-control/                       # Individual procedure files
+│   │   ├── circuit-breakers.md
 │   │   ├── comms-failure.md
 │   │   ├── crew-overrun.md
 │   │   ├── escalation.md
@@ -491,6 +481,7 @@ skills/nelson/
 │   ├── royal-marines.md                      # Royal Marines deployment rules
 │   ├── squadron-composition.md               # Mode selection and team sizing rules
 │   ├── structured-data.md                    # Structured fleet data capture reference
+│   ├── the-estimate.md                       # 7 Question Maritime Tactical Estimate reference
 │   ├── tool-mapping.md                       # Nelson-to-Claude Code tool reference
 │   └── standing-orders/                      # Individual anti-pattern files
 │       ├── admiral-at-the-helm.md
@@ -507,7 +498,8 @@ skills/nelson/
 │       ├── pressed-crew.md
 │       ├── skeleton-crew.md
 │       ├── split-keel.md
-│       └── unclassified-engagement.md
+│       ├── unclassified-engagement.md
+│       └── wrong-ensign.md
 └── scripts/                                  # Distributed with the skill (since v1.9.1)
     ├── nelson-data.py                        # CLI entry point for structured data capture
     ├── nelson_data_utils.py                  # Shared I/O, validation, constants
@@ -516,6 +508,7 @@ skills/nelson/
     ├── nelson_data_fleet.py                  # Fleet intelligence & analytics
     ├── nelson_conflict_scan.py               # Pre-flight split-keel scanner
     ├── nelson_conflict_radar.py              # Runtime file-conflict monitor
+    ├── nelson_circuit_breakers.py            # Automated budget/hull/idle alarms
     ├── nelson-phase.py                       # Deterministic phase engine
     └── test_*.py                             # Test suite (pytest)
 agents/
@@ -527,12 +520,7 @@ scripts/
 
 </details>
 
-- `plugin.json` declares the plugin name, version, and component paths for Claude Code's plugin system.
-- `marketplace.json` lets users add this repo as a plugin marketplace and install Nelson by name.
-- `SKILL.md` is the entrypoint that Claude reads when the skill is invoked. It defines the eight-step workflow and references the supporting files.
-- Files in `references/` contain detailed guidance that Claude loads on demand — they are not all loaded into context at once.
-- `hooks/hooks.json` is auto-discovered by the Claude Code plugin system; the commands resolve via `${CLAUDE_PLUGIN_ROOT}` and only run when Nelson is installed as a plugin.
-- `skills/nelson/scripts/` ships `nelson-data.py` and its sibling modules (including the conflict radar and pre-flight conflict scanner) alongside the skill so they are distributed on install. The root-level `scripts/` directory holds repo-level utilities (`count-tokens.py`, `check-references.sh`).
+`SKILL.md` is the entrypoint Claude reads when the skill is invoked; files in `references/` are loaded on demand rather than all at once. Hooks and scripts under `skills/nelson/scripts/` are wired up automatically by the plugin system via `${CLAUDE_PLUGIN_ROOT}` and ship with the skill on install.
 
 ## Mission artifacts
 
@@ -594,15 +582,6 @@ We are actively tracking multi-agent developments across these platforms. If you
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=harrymunro/nelson&type=Date" width="600" />
  </picture>
 </a>
-
-## Get started
-
-```
-/plugin marketplace add harrymunro/nelson
-/plugin install nelson@nelson-marketplace
-```
-
-Then just say "Use Nelson to..." and describe your mission, or [open an issue](https://github.com/harrymunro/nelson/issues) if something breaks.
 
 ## Disclaimer
 
