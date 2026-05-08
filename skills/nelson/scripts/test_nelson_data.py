@@ -932,6 +932,61 @@ class TestForm:
             expect_fail=True,
         )
 
+    def test_form_admiral_as_string_fails_with_clear_message(self, tmp_path: Path) -> None:
+        """Regression: admiral as a bare string used to crash with TypeError mid-formation."""
+        mission_dir = init_mission(tmp_path)
+        plan = make_plan()
+        plan["squadron"]["admiral"] = "HMS Victory"
+        plan_path = tmp_path / "plan.json"
+        write_plan_json(plan_path, plan)
+        result = run(
+            "form", "--mission-dir", str(mission_dir), "--plan", str(plan_path),
+            expect_fail=True,
+        )
+        combined = result.stdout + result.stderr
+        assert "squadron.admiral must be an object" in combined
+        assert "TypeError" not in combined
+
+    def test_form_admiral_missing_model_fails(self, tmp_path: Path) -> None:
+        mission_dir = init_mission(tmp_path)
+        plan = make_plan(admiral={"ship_name": "HMS Victory"})
+        plan_path = tmp_path / "plan.json"
+        write_plan_json(plan_path, plan)
+        result = run(
+            "form", "--mission-dir", str(mission_dir), "--plan", str(plan_path),
+            expect_fail=True,
+        )
+        combined = result.stdout + result.stderr
+        assert "squadron.admiral is missing required fields" in combined
+        assert "'model'" in combined
+
+    def test_form_red_cell_as_string_fails_with_clear_message(self, tmp_path: Path) -> None:
+        mission_dir = init_mission(tmp_path)
+        plan = make_plan()
+        plan["squadron"]["red_cell"] = "HMS Astute"
+        plan_path = tmp_path / "plan.json"
+        write_plan_json(plan_path, plan)
+        result = run(
+            "form", "--mission-dir", str(mission_dir), "--plan", str(plan_path),
+            expect_fail=True,
+        )
+        combined = result.stdout + result.stderr
+        assert "squadron.red_cell must be an object" in combined
+        assert "TypeError" not in combined
+
+    def test_form_captain_as_string_fails_with_clear_message(self, tmp_path: Path) -> None:
+        mission_dir = init_mission(tmp_path)
+        plan = make_plan(captains=["HMS Argyll"])
+        plan_path = tmp_path / "plan.json"
+        write_plan_json(plan_path, plan)
+        result = run(
+            "form", "--mission-dir", str(mission_dir), "--plan", str(plan_path),
+            expect_fail=True,
+        )
+        combined = result.stdout + result.stderr
+        assert "squadron.captains[0] must be an object" in combined
+        assert "TypeError" not in combined
+
     def test_form_with_dependencies(self, tmp_path: Path) -> None:
         mission_dir = init_mission(tmp_path)
         plan = make_plan(

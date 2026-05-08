@@ -1536,8 +1536,41 @@ def _validate_plan_json(plan: dict) -> None:
     sq = plan["squadron"]
     if "admiral" not in sq or "captains" not in sq:
         _die("Error: squadron must contain 'admiral' and 'captains'.")
+
+    admiral = sq["admiral"]
+    if not isinstance(admiral, dict):
+        _die(
+            "Error: squadron.admiral must be an object with 'ship_name' and "
+            "'model' keys, e.g. {\"ship_name\": \"HMS Victory\", \"model\": \"opus\"}; "
+            f"got {type(admiral).__name__}."
+        )
+    admiral_missing = {"ship_name", "model"} - set(admiral.keys())
+    if admiral_missing:
+        _die(f"Error: squadron.admiral is missing required fields: {sorted(admiral_missing)}")
+
     if not sq["captains"]:
         _die("Error: squadron must have at least one captain.")
+    required_captain_fields = {"ship_name", "ship_class", "model", "task_id"}
+    for i, cap in enumerate(sq["captains"]):
+        if not isinstance(cap, dict):
+            _die(
+                f"Error: squadron.captains[{i}] must be an object with "
+                f"{sorted(required_captain_fields)} keys; got {type(cap).__name__}."
+            )
+        cap_missing = required_captain_fields - set(cap.keys())
+        if cap_missing:
+            _die(f"Error: squadron.captains[{i}] is missing required fields: {sorted(cap_missing)}")
+
+    red_cell = sq.get("red_cell")
+    if red_cell is not None:
+        if not isinstance(red_cell, dict):
+            _die(
+                "Error: squadron.red_cell must be an object with a 'ship_name' "
+                f"key (and optional 'model'); got {type(red_cell).__name__}."
+            )
+        if "ship_name" not in red_cell:
+            _die("Error: squadron.red_cell is missing required field: 'ship_name'.")
+
     tasks = plan.get("tasks", [])
     if not tasks:
         _die("Error: plan JSON must contain a non-empty 'tasks' array.")
