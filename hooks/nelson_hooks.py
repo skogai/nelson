@@ -10,6 +10,11 @@ hooks. Each subcommand maps to a hook event type:
   brief-validate — PostToolUse on Write/Edit: turnover brief quality gate
   task-complete  — TaskCompleted: validation evidence and station controls
   idle-ship      — TeammateIdle: paid-off standing order advisory
+  session-init   — SessionStart: record admiral transcript_path for the
+                   TaskCreate captain-misuse gate
+  session-check  — PreToolUse on TaskCreate: reject captain TaskCreate calls
+                   in subagents/single-session mode (admiral exception via
+                   the marker written by session-init)
 
 Exit codes:
   0 — allow (action proceeds)
@@ -34,6 +39,9 @@ from typing import Any, NoReturn
 # ---------------------------------------------------------------------------
 # Shared utilities
 # ---------------------------------------------------------------------------
+
+
+ADMIRAL_SESSION_MARKER = "admiral.session"
 
 
 def _read_stdin() -> dict[str, Any]:
@@ -114,6 +122,25 @@ def _load_mission_context(
     if not bp:
         return None
     return mission_dir, bp
+
+
+def _write_admiral_marker(nelson_dir: Path, transcript_path: str) -> bool:
+    """Write the admiral session marker. Returns True on success, False on failure.
+
+    The marker stores the admiral's transcript_path so cmd_session_check can
+    distinguish admiral calls (match) from captain subagent calls (mismatch).
+    """
+    if not nelson_dir.is_dir():
+        return False
+    if not transcript_path.strip():
+        return False
+    try:
+        (nelson_dir / ADMIRAL_SESSION_MARKER).write_text(
+            transcript_path.strip() + "\n", encoding="utf-8",
+        )
+        return True
+    except OSError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +235,14 @@ def cmd_preflight(args: argparse.Namespace) -> None:
     _, battle_plan = ctx
     tasks = _get_tasks(battle_plan)
     tool_input = payload.get("tool_input", {})
+
+    # Opportunistic admiral marker backfill: if init ran after SessionStart,
+    # the marker won't have been written. The admiral always fires PreToolUse
+    # on Agent before spawning captains, so this is a safe write point.
+    nelson_dir = Path(payload.get("cwd", ".")) / ".nelson"
+    marker = nelson_dir / ADMIRAL_SESSION_MARKER
+    if not marker.is_file():
+        _write_admiral_marker(nelson_dir, payload.get("transcript_path", ""))
 
     for check in (
         lambda: _check_station_tiers(tasks),
@@ -628,6 +663,77 @@ def _clear_idle_tracker(mission_dir: Path, ship_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: session-init (SessionStart)
+# ---------------------------------------------------------------------------
+
+
+def cmd_session_init(args: argparse.Namespace) -> None:
+    """SessionStart event: record admiral identity for TaskCreate enforcement.
+
+    Writes the payload's transcript_path to .nelson/admiral.session so the
+    PreToolUse:TaskCreate hook can distinguish admiral (match) from captain
+    subagents (mismatch). No-op when .nelson/ does not yet exist — non-Nelson
+    projects are unaffected, and Nelson projects whose mission has not been
+    initialised will be backfilled by cmd_preflight on the first Agent spawn.
+    """
+    payload = _read_stdin()
+    cwd = Path(payload.get("cwd", "."))
+    _write_admiral_marker(cwd / ".nelson", payload.get("transcript_path", ""))
+    _allow()
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: session-check (PreToolUse on TaskCreate)
+# ---------------------------------------------------------------------------
+
+
+def cmd_session_check(args: argparse.Namespace) -> None:
+    """PreToolUse:TaskCreate gate using admiral session marker.
+
+    Allows TaskCreate when:
+      - no active Nelson mission (graceful degradation)
+      - mode is agent-team (TaskCreate is the shared coordination surface)
+      - admiral.session marker missing (fail-open, never had a chance to record)
+      - payload transcript_path matches the marker (admiral)
+      - payload transcript_path missing (defensive fail-open)
+
+    Rejects with wrong-ensign violation only when mode is subagents or
+    single-session AND the payload transcript_path does not match the
+    recorded admiral transcript (i.e. captain subagent context).
+    """
+    payload = _read_stdin()
+    ctx = _load_mission_context(payload)
+    if ctx is None:
+        _allow()
+
+    _, battle_plan = ctx
+    mode = _get_mode(battle_plan)
+    if mode == "agent-team":
+        _allow()
+
+    nelson_dir = Path(payload.get("cwd", ".")) / ".nelson"
+    marker = nelson_dir / ADMIRAL_SESSION_MARKER
+    if not marker.is_file():
+        _allow()
+
+    try:
+        admiral_transcript = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        _allow()
+
+    payload_transcript = payload.get("transcript_path", "").strip()
+    if payload_transcript and payload_transcript != admiral_transcript:
+        _reject(
+            "Standing order violation (wrong-ensign): "
+            f"TaskCreate is reserved for the admiral in {mode} mode. "
+            "Captains report progress via Agent return value, not the task list. "
+            "See references/tool-mapping.md."
+        )
+
+    _allow()
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -655,6 +761,14 @@ def main() -> None:
         "idle-ship",
         help="Idle ship advisory (TeammateIdle)",
     )
+    subparsers.add_parser(
+        "session-init",
+        help="Record admiral transcript_path on session start",
+    )
+    subparsers.add_parser(
+        "session-check",
+        help="Captain TaskCreate gate (PreToolUse on TaskCreate)",
+    )
 
     args = parser.parse_args()
 
@@ -663,6 +777,8 @@ def main() -> None:
         "brief-validate": cmd_brief_validate,
         "task-complete": cmd_task_complete,
         "idle-ship": cmd_idle_ship,
+        "session-init": cmd_session_init,
+        "session-check": cmd_session_check,
     }
 
     handler = dispatch.get(args.command)

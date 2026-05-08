@@ -1029,6 +1029,15 @@ def cmd_stand_down(args: argparse.Namespace) -> None:
     except Exception as exc:
         _err(f"Warning: failed to update memory store: {exc}")
 
+    # Best-effort cleanup of admiral session marker (mission-scoped lifecycle).
+    # Marker lives at .nelson/admiral.session, two levels up from mission_dir.
+    try:
+        (mission_dir.parent.parent / "admiral.session").unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
     # Print mission summary
     achieved = "ACHIEVED" if args.outcome_achieved else "NOT ACHIEVED"
     print(

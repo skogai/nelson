@@ -210,9 +210,11 @@ Nelson is not purely advisory. A set of Claude Code hooks (`hooks/nelson_hooks.p
 | Event | Hook | What it enforces |
 |---|---|---|
 | `PreToolUse` on `Agent` | `preflight` | Station tier gate, file ownership conflicts, mode-tool consistency |
+| `PreToolUse` on `TaskCreate` | `session-check` | Captain TaskCreate gate (admiral exception via session marker) |
 | `PostToolUse` on `Write`/`Edit` | `brief-validate` | Turnover brief quality gate |
 | `TaskCompleted` | `task-complete` | Validation evidence and station controls |
 | `TeammateIdle` | `idle-ship` | Paid-off standing order advisory |
+| `SessionStart` | `session-init` | Records admiral `transcript_path` for the TaskCreate gate |
 
 Plugin installs auto-discover `hooks/hooks.json` and wire these up with no user action. Hooks degrade gracefully: if no active Nelson mission is found, they exit cleanly and do not interfere with non-Nelson workflows. See [Installation](#installation) for manual-install caveats.
 

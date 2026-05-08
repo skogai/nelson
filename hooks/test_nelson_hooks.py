@@ -24,6 +24,7 @@ if hooks_dir not in sys.path:
 
 from conftest import VALID_FLAGSHIP_BRIEF, VALID_STANDARD_BRIEF  # noqa: E402
 from nelson_hooks import (  # noqa: E402
+    ADMIRAL_SESSION_MARKER,
     ROLLBACK_PATTERNS,
     VALIDATION_EVIDENCE_PATTERNS,
     _check_running_plot_nonempty,
@@ -35,6 +36,8 @@ from nelson_hooks import (  # noqa: E402
     cmd_brief_validate,
     cmd_idle_ship,
     cmd_preflight,
+    cmd_session_check,
+    cmd_session_init,
     cmd_task_complete,
 )
 
@@ -502,3 +505,150 @@ class TestIdleShip:
         _make_mission(tmp_path, fleet_status={"squadron": []})
         _run(cmd_idle_ship, {"teammate_name": "HMS Unknown"}, str(tmp_path))
         assert "not found" in capsys.readouterr().err.lower()
+
+
+# ---------------------------------------------------------------------------
+# Session-init (SessionStart)
+# ---------------------------------------------------------------------------
+
+
+class TestSessionInit:
+    def test_no_nelson_dir_allows_and_no_write(self, tmp_path: Path) -> None:
+        """Non-Nelson project: no .nelson/ exists, hook is a no-op (allow)."""
+        code = _run(
+            cmd_session_init,
+            {"transcript_path": "/tmp/x.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+        assert not (tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER).exists()
+
+    def test_writes_admiral_session_marker(self, tmp_path: Path) -> None:
+        (tmp_path / ".nelson").mkdir()
+        code = _run(
+            cmd_session_init,
+            {"transcript_path": "/transcripts/admiral.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+        marker = tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER
+        assert marker.is_file()
+        assert marker.read_text(encoding="utf-8").strip() == "/transcripts/admiral.jsonl"
+
+    def test_overwrites_existing_marker_on_session_resume(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / ".nelson").mkdir()
+        marker = tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER
+        marker.write_text("/old/transcript.jsonl\n", encoding="utf-8")
+        code = _run(
+            cmd_session_init,
+            {"transcript_path": "/new/transcript.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+        assert marker.read_text(encoding="utf-8").strip() == "/new/transcript.jsonl"
+
+    def test_missing_transcript_path_is_no_op(self, tmp_path: Path) -> None:
+        (tmp_path / ".nelson").mkdir()
+        code = _run(cmd_session_init, {}, cwd=str(tmp_path))
+        assert code == 0
+        assert not (tmp_path / ".nelson" / ADMIRAL_SESSION_MARKER).exists()
+
+
+# ---------------------------------------------------------------------------
+# Session-check (PreToolUse on TaskCreate)
+# ---------------------------------------------------------------------------
+
+
+def _write_marker(tmp_path: Path, transcript: str) -> None:
+    """Helper: write the admiral session marker for tests."""
+    nelson_dir = tmp_path / ".nelson"
+    nelson_dir.mkdir(exist_ok=True)
+    (nelson_dir / ADMIRAL_SESSION_MARKER).write_text(
+        transcript + "\n", encoding="utf-8",
+    )
+
+
+class TestSessionCheck:
+    def test_no_mission_allows(self, tmp_path: Path) -> None:
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/captain.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_agent_team_mode_allows(self, tmp_path: Path) -> None:
+        _make_mission(tmp_path, mode="agent-team")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/captain.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_marker_missing_allows(self, tmp_path: Path) -> None:
+        """Graceful degradation: missing marker means allow."""
+        _make_mission(tmp_path, mode="subagents")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/anyone.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_admiral_match_allows_subagents_mode(self, tmp_path: Path) -> None:
+        _make_mission(tmp_path, mode="subagents")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/admiral.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_admiral_match_allows_single_session_mode(
+        self, tmp_path: Path,
+    ) -> None:
+        _make_mission(tmp_path, mode="single-session")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/admiral.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 0
+
+    def test_captain_mismatch_rejects_subagents_mode(
+        self, tmp_path: Path,
+    ) -> None:
+        _make_mission(tmp_path, mode="subagents")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/captain.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 2
+
+    def test_captain_mismatch_rejects_single_session_mode(
+        self, tmp_path: Path,
+    ) -> None:
+        _make_mission(tmp_path, mode="single-session")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(
+            cmd_session_check,
+            {"transcript_path": "/captain.jsonl"},
+            cwd=str(tmp_path),
+        )
+        assert code == 2
+
+    def test_missing_transcript_path_allows(self, tmp_path: Path) -> None:
+        """Defensive fail-open: payload with no transcript_path is allowed."""
+        _make_mission(tmp_path, mode="subagents")
+        _write_marker(tmp_path, "/admiral.jsonl")
+        code = _run(cmd_session_check, {}, cwd=str(tmp_path))
+        assert code == 0

@@ -702,6 +702,42 @@ class TestStandDown:
         fs = read_json(mission_dir / "fleet-status.json")
         assert fs["mission"]["status"] == "complete"
 
+    def test_removes_admiral_session_marker(self, tmp_path: Path) -> None:
+        """Admiral session marker is cleaned up at stand-down."""
+        mission_dir = init_mission(tmp_path)
+        add_squadron(mission_dir)
+        add_task(mission_dir)
+        run("plan-approved", "--mission-dir", str(mission_dir))
+        marker = tmp_path / ".nelson" / "admiral.session"
+        marker.write_text("/transcripts/admiral.jsonl\n", encoding="utf-8")
+        assert marker.exists()
+        run(
+            "stand-down",
+            "--mission-dir", str(mission_dir),
+            "--outcome-achieved",
+            "--actual-outcome", "Done",
+            "--metric-result", "Pass",
+        )
+        assert not marker.exists()
+
+    def test_stand_down_succeeds_without_admiral_session_marker(
+        self, tmp_path: Path,
+    ) -> None:
+        """Cleanup is best-effort: missing marker must not fail stand-down."""
+        mission_dir = init_mission(tmp_path)
+        add_squadron(mission_dir)
+        add_task(mission_dir)
+        run("plan-approved", "--mission-dir", str(mission_dir))
+        marker = tmp_path / ".nelson" / "admiral.session"
+        assert not marker.exists()
+        run(
+            "stand-down",
+            "--mission-dir", str(mission_dir),
+            "--outcome-achieved",
+            "--actual-outcome", "Done",
+            "--metric-result", "Pass",
+        )
+
 
 # ---------------------------------------------------------------------------
 # Status
