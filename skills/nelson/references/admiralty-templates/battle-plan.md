@@ -1,5 +1,7 @@
 # Battle Plan Template
 
+The rendered plan lives at `{mission-dir}/battle-plan.md` and is the prose authority for the mission — commander's intent and per-task briefs. The structured form at `{mission-dir}/battle-plan.json` is the execution-data authority (owners, dependencies, station tiers, file ownership). Keep them aligned: edit one, mirror the change in the other.
+
 Every captain's brief opens with the commander's intent from the Estimate (§2) — one paragraph, verbatim. This is how each ship sails under a shared understanding of purpose.
 
 ```text

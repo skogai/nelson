@@ -58,6 +58,48 @@ from nelson_data_utils import (
 _CONFLICT_SCAN_SCRIPT = Path(__file__).resolve().parent / "nelson_conflict_scan.py"
 
 
+# Per-phase recovery guidance for `cmd_recover`. UNDERWAY is intentionally
+# omitted: when the mission is underway, recovery uses handoff-packet-derived
+# actions instead of static guidance.
+PHASE_RECOVERY_GUIDANCE: dict[str, list[str]] = {
+    "SAILING_ORDERS": [
+        "You are in SAILING_ORDERS phase (Step 1).",
+        "Read sailing-orders.json for outcome, metric, deadline, and constraints.",
+        "Decide with the user whether to conduct The Estimate before drafting the Battle Plan.",
+    ],
+    "ESTIMATE": [
+        "You are in ESTIMATE phase (Step 2).",
+        "Read sailing-orders.json and any partial estimate.md to resume the seven-question Maritime Tactical Estimate.",
+        "Continue from the next unanswered question; honour the Q1 and Q3 checkpoints with the user.",
+    ],
+    "BATTLE_PLAN": [
+        "You are in BATTLE_PLAN phase (Step 3).",
+        "Read estimate.md for commander's intent and effects, and battle-plan.md for any drafted plan.",
+        "Complete the Standing Order Check, then persist the final plan to {mission-dir}/battle-plan.md before advancing to Step 4.",
+    ],
+    "FORMATION": [
+        "You are in FORMATION phase (Step 4).",
+        "Read battle-plan.json for tasks and squadron, and battle-plan.md for the prose plan.",
+        "Confirm formation orders with the user before advancing to PERMISSION.",
+    ],
+    "PERMISSION": [
+        "You are in PERMISSION phase (Step 5).",
+        "Read battle-plan.json and battle-plan.md, then re-display the complete battle plan and squadron formation.",
+        "Wait for explicit user permission before logging permission_granted and advancing to UNDERWAY.",
+    ],
+    "STAND_DOWN": [
+        "You are in STAND_DOWN phase (Step 8).",
+        "Read stand-down.json for the recorded mission summary.",
+        "Verify {mission-dir}/captains-log.md exists and remove .nelson/.active-{SESSION_ID} if still present.",
+    ],
+}
+
+
+BATTLE_PLAN_MD_REQUIRED_PHASES: frozenset[str] = frozenset(
+    {"BATTLE_PLAN", "FORMATION", "PERMISSION"}
+)
+
+
 # ---------------------------------------------------------------------------
 # Internal helper: _do_init (used by cmd_init and cmd_headless)
 # ---------------------------------------------------------------------------
@@ -1861,17 +1903,38 @@ def _build_recovery_briefing(
             }
         )
 
+    current_phase = (
+        fleet_status.get("mission", {}).get("phase", "unknown")
+        if fleet_status
+        else "unknown"
+    )
+
     recommended_actions: list[str] = []
-    for pkt in handoff_packets:
-        ship = pkt.get("ship_name", "unknown")
-        task_id = pkt.get("task_id")
-        recommended_actions.append(
-            f"Resume task {task_id} from handoff packet ({ship})"
-        )
-    if not recommended_actions:
-        recommended_actions.append(
-            "No handoff packets found — review fleet-status.json for current state"
-        )
+    # Phase guidance takes precedence over handoff packets when both exist —
+    # an anomalous mid-flight state, but if it occurs the phase wins because
+    # it reflects the admiral's last recorded position in the workflow.
+    if current_phase in PHASE_RECOVERY_GUIDANCE:
+        recommended_actions = list(PHASE_RECOVERY_GUIDANCE[current_phase])
+        if (
+            current_phase in BATTLE_PLAN_MD_REQUIRED_PHASES
+            and not (mission_dir / "battle-plan.md").is_file()
+        ):
+            recommended_actions.insert(
+                0,
+                "WARNING: battle-plan.md is missing — rebuild from estimate.md",
+            )
+    else:
+        # UNDERWAY (and any unknown phase): derive actions from handoff packets.
+        for pkt in handoff_packets:
+            ship = pkt.get("ship_name", "unknown")
+            task_id = pkt.get("task_id")
+            recommended_actions.append(
+                f"Resume task {task_id} from handoff packet ({ship})"
+            )
+        if not recommended_actions:
+            recommended_actions.append(
+                "No handoff packets found — review fleet-status.json for current state"
+            )
 
     return {
         "mission_dir": str(mission_dir),
@@ -1880,6 +1943,7 @@ def _build_recovery_briefing(
             if fleet_status
             else "unknown"
         ),
+        "current_phase": current_phase,
         "fleet_status": fleet_status,
         "fleet_status_staleness": staleness,
         "handoff_packets": handoff_packets,
@@ -1893,6 +1957,7 @@ def _format_recovery_text(briefing: dict) -> str:
     lines: list[str] = []
     lines.append(f"[nelson-data] Recovery briefing for {briefing['mission_dir']}")
     lines.append(f"  Status: {briefing['mission_status']}")
+    lines.append(f"  Phase: {briefing.get('current_phase', 'unknown')}")
     lines.append("")
 
     staleness = briefing.get("fleet_status_staleness")

@@ -18,3 +18,5 @@ Use when a session is interrupted (context limit, crash, timeout) and work must 
 7. Re-issue sailing orders with the original mission outcome and updated scope reflecting completed work.
 8. Re-form the squadron at the minimum size needed for remaining tasks.
 9. Resume quarterdeck rhythm from the next scheduled checkpoint.
+
+**Safe compaction windows.** State is fully persisted at every phase boundary: after Sailing Orders (Step 1), after the Estimate (Step 2), after the Battle Plan is drafted to disk (Step 3), after Formation (Step 4), and at every quarterdeck checkpoint (Step 6). The one unsafe window is *inside* Step 5: between the user granting permission and the admiral logging `permission_granted` + advancing to UNDERWAY + spawning agents — that whole sequence is a single tightly coupled turn.
