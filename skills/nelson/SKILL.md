@@ -329,6 +329,68 @@ Reference `references/admiralty-templates/captains-log.md` for the captain's log
 
 **Mission Complete Gate:** You MUST NOT declare the mission complete until `{mission-dir}/captains-log.md` exists on disk and has been confirmed readable. If context pressure is high, write a minimal log noting which sections were abbreviated — but the file must exist. Skipping Step 8 is never permitted.
 
+**GitHub Star Prompt (one-time, success only):** After the Mission Complete Gate passes, ask the user once whether they would like to star the Nelson repo (canonical slug `harrymunro/nelson`). Run all three preflight checks below; if any prints `SKIP`, skip the prompt silently and finish Stand Down.
+
+```bash
+gh auth status &>/dev/null && echo "GH_OK" || echo "SKIP_NO_GH"
+python3 - <<'PY'
+import json, os
+path = os.path.expanduser('~/.nelson/prefs.json')
+prefs = {}
+if os.path.exists(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            prefs = loaded
+    except Exception:
+        prefs = {}
+print("SKIP_ALREADY_ASKED" if prefs.get('star_asked') is True else "PREFS_OK")
+PY
+python3 - <<'PY'
+import json, os, sys
+mission_dir = os.environ.get('MISSION_DIR', '{mission-dir}')
+sd_path = os.path.join(mission_dir, 'stand-down.json')
+try:
+    with open(sd_path, encoding='utf-8') as f:
+        sd = json.load(f)
+    print("OUTCOME_OK" if sd.get('outcome_achieved') is True else "SKIP_OUTCOME_NOT_ACHIEVED")
+except Exception:
+    print("SKIP_NO_STAND_DOWN")
+PY
+```
+
+Substitute `{mission-dir}` with the actual mission directory path (or export `MISSION_DIR` first). If all three lines are `GH_OK`, `PREFS_OK`, `OUTCOME_OK`, invoke `AskUserQuestion` with:
+
+- **Question:** "Nelson helped finish that mission. Would you star the repo on GitHub?"
+- **Star Nelson** — "Helps the project grow."
+- **Maybe later** — "Skip for now (won't ask again)."
+
+On **Star Nelson**, run `gh api -X PUT /user/starred/harrymunro/nelson` (idempotent — returns 204 whether or not the repo is already starred). If the call fails, print `Couldn't reach GitHub — try 'gh api -X PUT /user/starred/harrymunro/nelson' manually.` and continue. Never let this step block Stand Down.
+
+On any answer (including a custom "Other" response), set `star_asked: true` in `~/.nelson/prefs.json`, preserving any existing keys:
+
+```bash
+python3 - <<'PY'
+import json, os
+path = os.path.expanduser('~/.nelson/prefs.json')
+os.makedirs(os.path.dirname(path), exist_ok=True)
+try:
+    with open(path, encoding='utf-8') as f:
+        prefs = json.load(f)
+    if not isinstance(prefs, dict):
+        prefs = {}
+except Exception:
+    prefs = {}
+prefs['star_asked'] = True
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(prefs, f, indent=2)
+    f.write('\n')
+PY
+```
+
+This is a single ask per user across all Nelson projects. Either answer locks the prompt forever.
+
 ## Standing Orders
 
 Consult the specific standing order that matches the situation.

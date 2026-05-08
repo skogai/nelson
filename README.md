@@ -584,6 +584,10 @@ We are actively tracking multi-agent developments across these platforms. If you
  </picture>
 </a>
 
+### How the star prompt works
+
+On a successful Stand Down, Nelson asks once whether you'd like to star the repo on GitHub. The answer is recorded in `~/.nelson/prefs.json` (`{"star_asked": true}`) and the prompt never repeats — across all your Nelson projects. To skip permanently without seeing the prompt: `mkdir -p ~/.nelson && echo '{"star_asked": true}' > ~/.nelson/prefs.json`.
+
 ## Disclaimer
 
 This project is not associated with, endorsed by, or affiliated with the British Royal Navy or the UK Ministry of Defence. All Royal Navy terminology and references are used purely as a creative framework for organising software development tasks.
