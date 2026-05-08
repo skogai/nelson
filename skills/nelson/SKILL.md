@@ -329,20 +329,44 @@ Reference `references/admiralty-templates/captains-log.md` for the captain's log
 
 **Mission Complete Gate:** You MUST NOT declare the mission complete until `{mission-dir}/captains-log.md` exists on disk and has been confirmed readable. If context pressure is high, write a minimal log noting which sections were abbreviated — but the file must exist. Skipping Step 8 is never permitted.
 
-**GitHub Star Prompt (one-time, success only):** After the Mission Complete Gate passes, and only on a successful mission (`--outcome-achieved` was passed to `nelson-data.py stand-down`), ask the user once whether they would like to star the Nelson repo. Skip silently if `gh auth status` exits non-zero or if `~/.nelson/prefs.json` already has `"star_asked": true`.
+**GitHub Star Prompt (one-time, success only):** After the Mission Complete Gate passes, ask the user once whether they would like to star the Nelson repo (canonical slug `harrymunro/nelson`). Run all three preflight checks below; if any prints `SKIP`, skip the prompt silently and finish Stand Down.
 
 ```bash
-gh auth status &>/dev/null && echo "GH_OK" || echo "GH_MISSING"
-python3 -c "import json,os; p=os.path.expanduser('~/.nelson/prefs.json'); print((json.load(open(p)) if os.path.exists(p) else {}).get('star_asked'))"
+gh auth status &>/dev/null && echo "GH_OK" || echo "SKIP_NO_GH"
+python3 - <<'PY'
+import json, os
+path = os.path.expanduser('~/.nelson/prefs.json')
+prefs = {}
+if os.path.exists(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            prefs = loaded
+    except Exception:
+        prefs = {}
+print("SKIP_ALREADY_ASKED" if prefs.get('star_asked') is True else "PREFS_OK")
+PY
+python3 - <<'PY'
+import json, os, sys
+mission_dir = os.environ.get('MISSION_DIR', '{mission-dir}')
+sd_path = os.path.join(mission_dir, 'stand-down.json')
+try:
+    with open(sd_path, encoding='utf-8') as f:
+        sd = json.load(f)
+    print("OUTCOME_OK" if sd.get('outcome_achieved') is True else "SKIP_OUTCOME_NOT_ACHIEVED")
+except Exception:
+    print("SKIP_NO_STAND_DOWN")
+PY
 ```
 
-If both checks pass (gh authed, `star_asked` not `True`), invoke `AskUserQuestion` with:
+Substitute `{mission-dir}` with the actual mission directory path (or export `MISSION_DIR` first). If all three lines are `GH_OK`, `PREFS_OK`, `OUTCOME_OK`, invoke `AskUserQuestion` with:
 
 - **Question:** "Nelson helped finish that mission. Would you star the repo on GitHub?"
 - **Star Nelson** — "Helps the project grow."
 - **Maybe later** — "Skip for now (won't ask again)."
 
-On **Star Nelson**, run `gh api -X PUT /user/starred/harrymunro/nelson`. If the call fails, print `Couldn't reach GitHub — try 'gh api -X PUT /user/starred/harrymunro/nelson' manually.` and continue. Never let this step block Stand Down.
+On **Star Nelson**, run `gh api -X PUT /user/starred/harrymunro/nelson` (idempotent — returns 204 whether or not the repo is already starred). If the call fails, print `Couldn't reach GitHub — try 'gh api -X PUT /user/starred/harrymunro/nelson' manually.` and continue. Never let this step block Stand Down.
 
 On any answer (including a custom "Other" response), set `star_asked: true` in `~/.nelson/prefs.json`, preserving any existing keys:
 
