@@ -26,6 +26,7 @@ from nelson_circuit_breakers import (
 )
 from nelson_data_memory import _update_patterns_store, _update_standing_order_stats
 from nelson_data_utils import (
+    ADMIRAL_SESSION_MARKER,
     FLEET_STATUS_EVENT_TYPES,
     FLEET_STATUS_STALENESS_THRESHOLD_SECONDS,
     JSON_INDENT,
@@ -1028,6 +1029,16 @@ def cmd_stand_down(args: argparse.Namespace) -> None:
         _update_standing_order_stats(mission_dir)
     except Exception as exc:
         _err(f"Warning: failed to update memory store: {exc}")
+
+    # Best-effort cleanup of admiral session marker (mission-scoped lifecycle).
+    # Marker lives at .nelson/<ADMIRAL_SESSION_MARKER>, two levels up from
+    # mission_dir (.nelson/missions/<id>/).
+    try:
+        (mission_dir.parent.parent / ADMIRAL_SESSION_MARKER).unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
     # Print mission summary
     achieved = "ACHIEVED" if args.outcome_achieved else "NOT ACHIEVED"

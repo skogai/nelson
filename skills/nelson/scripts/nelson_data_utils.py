@@ -83,6 +83,10 @@ assert FLEET_STATUS_EVENT_TYPES <= VALID_EVENT_TYPES
 
 FLEET_STATUS_STALENESS_THRESHOLD_SECONDS = 600
 
+# Filename of the admiral session marker, written under .nelson/.
+# Must stay in sync with hooks/nelson_hooks.py:ADMIRAL_SESSION_MARKER.
+ADMIRAL_SESSION_MARKER = "admiral.session"
+
 
 # ---------------------------------------------------------------------------
 # Helpers — pure functions (no side effects)
