@@ -210,7 +210,6 @@ Nelson is not purely advisory. A set of Claude Code hooks (`hooks/nelson_hooks.p
 | Event | Hook | What it enforces |
 |---|---|---|
 | `PreToolUse` on `Agent` | `preflight` | Station tier gate, file ownership conflicts, mode-tool consistency |
-| `PreToolUse` on `TaskCreate` | `mode-check` | Rejects task creation in non-agent-team modes |
 | `PostToolUse` on `Write`/`Edit` | `brief-validate` | Turnover brief quality gate |
 | `TaskCompleted` | `task-complete` | Validation evidence and station controls |
 | `TeammateIdle` | `idle-ship` | Paid-off standing order advisory |

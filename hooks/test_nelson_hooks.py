@@ -1,8 +1,7 @@
 """Tests for nelson_hooks.py — hook enforcement script.
 
-Tests the preflight, mode-check, brief-validate, task-complete,
-and idle-ship subcommands using temporary mission directories and
-monkeypatched stdin.
+Tests the preflight, brief-validate, task-complete, and idle-ship
+subcommands using temporary mission directories and monkeypatched stdin.
 """
 
 from __future__ import annotations
@@ -35,7 +34,6 @@ from nelson_hooks import (  # noqa: E402
     _has_evidence,
     cmd_brief_validate,
     cmd_idle_ship,
-    cmd_mode_check,
     cmd_preflight,
     cmd_task_complete,
 )
@@ -300,28 +298,6 @@ class TestPreflight:
             cwd=str(tmp_path),
         )
         assert code == 0
-
-
-# ---------------------------------------------------------------------------
-# Mode-check
-# ---------------------------------------------------------------------------
-
-
-class TestModeCheck:
-    def test_no_mission_allows(self, tmp_path: Path) -> None:
-        assert _run(cmd_mode_check, {"tool_name": "TaskCreate", "tool_input": {}}, str(tmp_path)) == 0
-
-    def test_subagents_mode_rejects(self, tmp_path: Path) -> None:
-        _make_mission(tmp_path, mode="subagents")
-        assert _run(cmd_mode_check, {"tool_name": "TaskCreate", "tool_input": {}}, str(tmp_path)) == 2
-
-    def test_single_session_rejects(self, tmp_path: Path) -> None:
-        _make_mission(tmp_path, mode="single-session")
-        assert _run(cmd_mode_check, {"tool_name": "TaskCreate", "tool_input": {}}, str(tmp_path)) == 2
-
-    def test_agent_team_allows(self, tmp_path: Path) -> None:
-        _make_mission(tmp_path, mode="agent-team")
-        assert _run(cmd_mode_check, {"tool_name": "TaskCreate", "tool_input": {}}, str(tmp_path)) == 0
 
 
 # ---------------------------------------------------------------------------
