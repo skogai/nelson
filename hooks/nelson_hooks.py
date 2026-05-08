@@ -7,7 +7,6 @@ hooks. Each subcommand maps to a hook event type:
 
   preflight      — PreToolUse on Agent: station tier gate, file ownership
                    conflicts, mode-tool consistency
-  mode-check     — PreToolUse on TaskCreate: reject in non-agent-team modes
   brief-validate — PostToolUse on Write/Edit: turnover brief quality gate
   task-complete  — TaskCompleted: validation evidence and station controls
   idle-ship      — TeammateIdle: paid-off standing order advisory
@@ -218,31 +217,6 @@ def cmd_preflight(args: argparse.Namespace) -> None:
         msg = check()
         if msg:
             _reject(msg)
-
-    _allow()
-
-
-# ---------------------------------------------------------------------------
-# Subcommand: mode-check (PreToolUse on TaskCreate)
-# ---------------------------------------------------------------------------
-
-
-def cmd_mode_check(args: argparse.Namespace) -> None:
-    """Reject TaskCreate in non-agent-team execution modes."""
-    payload = _read_stdin()
-    ctx = _load_mission_context(payload)
-    if ctx is None:
-        _allow()
-
-    _, battle_plan = ctx
-    mode = _get_mode(battle_plan)
-    if mode in ("subagents", "single-session"):
-        _reject(
-            f"Standing order violation (wrong-ensign): "
-            f"TaskCreate is not available in {mode} mode. "
-            f"Track work in the admiral's conversation context. "
-            f"See references/tool-mapping.md."
-        )
 
     _allow()
 
@@ -670,10 +644,6 @@ def main() -> None:
         help="Pre-flight standing order gate (PreToolUse on Agent)",
     )
     subparsers.add_parser(
-        "mode-check",
-        help="Mode-tool consistency check (PreToolUse on TaskCreate)",
-    )
-    subparsers.add_parser(
         "brief-validate",
         help="Turnover brief quality gate (PostToolUse on Write/Edit)",
     )
@@ -690,7 +660,6 @@ def main() -> None:
 
     dispatch = {
         "preflight": cmd_preflight,
-        "mode-check": cmd_mode_check,
         "brief-validate": cmd_brief_validate,
         "task-complete": cmd_task_complete,
         "idle-ship": cmd_idle_ship,
