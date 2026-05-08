@@ -32,7 +32,14 @@ The numbering carries a thought-process, not a form. Short answers for simple mi
 
 The Estimate is a conversation between admiral and user, not a monologue. Respect the user's time.
 
-**Q1 — Reconnaissance.** The only question that dispatches sub-agents. Send one or more Explore agents into the codebase with a scouting brief derived from the Sailing Orders. For ambiguous or unfamiliar terrain, dispatch them in parallel with different search targets. Synthesise their reports into a terrain assessment in your own voice. Do not paste raw agent output into the estimate.
+**Q1 — Reconnaissance.** The first question that dispatches sub-agents. Send one or more Explore agents into the codebase with a scouting brief derived from the Sailing Orders. For ambiguous or unfamiliar terrain, dispatch them in parallel with different search targets. Synthesise their reports into a terrain assessment in your own voice. Do not paste raw agent output into the estimate.
+
+**Q1 Explorer discipline:**
+- Default to **multiple focused Explores** rather than one laundry-list dispatch. Each Explore covers one subsystem or one specific question. Ten files or one module is a working ceiling per dispatch.
+- Each Explore brief MUST require a **structured summary** — list of `{file_path, finding, evidence}` or equivalent. Do not request raw file contents; the admiral synthesises across summaries.
+- If only one dispatch is genuinely warranted (small repo, narrow question, single subsystem) and Explore's prompt limits are a concern, use `subagent_type=general-purpose` with an explicit "return a structured summary; do not return raw file contents" instruction.
+- Estimate Explorers inherit the admiral's model. The cost-savings default of haiku for narrow Explorers does not apply during The Estimate (see `references/model-selection.md`).
+- When an Explore fails (prompt-length limit, malformed output, error), apply `references/standing-orders/pulling-the-oar.md`: fix the brief and re-dispatch. Do not absorb the work into the admiral's context.
 
 **Checkpoint 1 — after Q1.** Present findings to the user:
 
@@ -40,9 +47,17 @@ The Estimate is a conversation between admiral and user, not a monologue. Respec
 
 This is also the natural point for **mission reframing**. If reconnaissance reveals the stated mission will not achieve the user's actual intent, say so plainly and propose a reframing. The user confirms, amends, or overrides. If the mission is reframed, amend `sailing-orders.json` and preserve the original as context.
 
-**Q2 — Intent.** Reason from Q1 findings and the Sailing Orders. Derive the commander's intent — one paragraph that will travel with every captain's brief.
+**Dispatch 1 — Q2 and Q3 (Estimate-Drafter).** Q2 and Q3 are delegated to a single subagent. Q2 derives the commander's intent from the Q1 reconnaissance and Sailing Orders — one paragraph that will travel with every captain's brief. Q3 decomposes the intent into concrete effects, each carrying commander's guidance and acceptance criteria (see below).
 
-**Q3 — Effects.** Decompose the intent into the concrete changes required. For each effect, draft commander's guidance and acceptance criteria (see below).
+The admiral writes the briefing to `{mission-dir}/estimate-briefing-1.md` so it survives compaction, then references it in the `Agent` prompt. Briefing contents:
+- Sailing orders (full content, not just summary).
+- Pointer to `{mission-dir}/estimate.md` containing the Q1 reconnaissance synthesis.
+- Output requirements: H2 sections for Q2 (Intent) and Q3 (Effects); voice and register from this document.
+- Mission directory path so the subagent writes to the correct file.
+- User-stated preferences captured in conversation but not in sailing orders (e.g. "admiral must not implement", "cost-savings enabled"). The admiral surfaces these from its own context — they are the gap formal sailing orders typically miss.
+- Pointer to this file (`references/the-estimate.md`) for thought-process detail.
+
+The subagent appends Q2 and Q3 sections to `{mission-dir}/estimate.md`.
 
 **Checkpoint 2 — after Q3.** Present intent and effects to the user:
 
@@ -50,7 +65,18 @@ This is also the natural point for **mission reframing**. If reconnaissance reve
 
 This is the substantive gate — the user is approving *what* will be done before you plan *how*.
 
-**Q4-Q7 — Terrain, Forces, Coordination, Control.** These flow from the approved effects and are the admiral's professional judgement about execution. Work through them without interrupting the user.
+**Dispatch 2 — Q4 through Q7 (Estimate-Planner).** A second subagent reads the approved Q1–Q3 sections from `{mission-dir}/estimate.md` and produces Terrain (Q4), Forces (Q5), Coordination (Q6), and Control (Q7) — the admiral's professional judgement about execution.
+
+Briefing contents (`{mission-dir}/estimate-briefing-2.md`):
+- Pointer to `{mission-dir}/estimate.md` containing approved Q1–Q3 sections.
+- Output requirements: H2 sections for Q4–Q7; voice and register from this document.
+- Mission directory path so the subagent appends to the correct file.
+- User-stated preferences captured in conversation but not in sailing orders.
+- Pointer to this file for thought-process detail.
+
+The subagent appends Q4–Q7 sections to `{mission-dir}/estimate.md`. The admiral then presents the complete estimate for final review.
+
+**Model inheritance.** Both Estimate subagents omit the `model:` parameter on the `Agent` tool call — they inherit the admiral's model. This holds even when sailing orders specify cost-savings, per `references/model-selection.md`.
 
 **Final review.** Present the complete estimate. The user approves, requests amendments, or overrides specific questions. On approval, advance the phase from `ESTIMATE` to `BATTLE_PLAN`.
 

@@ -559,6 +559,14 @@ Current-state snapshot for real-time consumers (hooks, dashboards).
 }
 ```
 
+### Freshness fields
+
+`fleet-status.json` carries two freshness fields:
+- `last_updated` — ISO 8601 timestamp of the most recent write. Bumped at every checkpoint and on every state-changing event (`task_started`, `task_completed`, `blocker_raised`, `blocker_resolved`, `hull_threshold_crossed`, `relief_on_station`).
+- `last_event_id` — the index of the most recent mission-log event whose effect is reflected in fleet-status. Recovery uses it to detect mission-log events that haven't yet been merged into fleet-status.
+
+Non-state-changing events (commendations, standing-order violations, decisions) append to `mission-log.json` only and leave fleet-status untouched.
+
 ### handoff-packet.json (Write-Once Per Relief)
 
 Written to `{mission-dir}/turnover-briefs/{ship-name}-{timestamp}.json` by the `handoff` command.

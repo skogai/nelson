@@ -26,6 +26,8 @@ from nelson_circuit_breakers import (
 )
 from nelson_data_memory import _update_patterns_store, _update_standing_order_stats
 from nelson_data_utils import (
+    FLEET_STATUS_EVENT_TYPES,
+    FLEET_STATUS_STALENESS_THRESHOLD_SECONDS,
     JSON_INDENT,
     VALID_DECISIONS,
     VALID_ESTIMATE_OUTCOME_METHODS,
@@ -660,7 +662,8 @@ def cmd_event(args: argparse.Namespace, extra: list[str]) -> None:
         "timestamp": _now_iso(),
         "data": data,
     }
-    _append_event(mission_dir, event)
+    event_id = _append_event(mission_dir, event)
+    _update_fleet_status_from_event(mission_dir, event, event_id)
 
     print(f"[nelson-data] Event logged: {event_type} (checkpoint {checkpoint})")
 
@@ -1651,22 +1654,50 @@ def cmd_headless(args: argparse.Namespace) -> None:
 def _find_active_mission(missions_dir: Path) -> Path | None:
     """Find the most recent active mission directory.
 
-    Checks for .active-* symlink files first, then falls back to the most
-    recent mission directory without a stand-down.json.
+    Walks all ``.active-*`` markers, resolves each to a mission directory,
+    skips ones that are missing or already stood down, and returns the
+    candidate with the latest timestamp-prefixed directory name. Falls back
+    to scanning ``missions_dir`` directly when no usable markers exist.
+
+    Multiple markers may point at the same mission directory using different
+    path forms (e.g., a relative ``.nelson/missions/...`` written by ``init``
+    and an absolute path written by another caller). Candidates are
+    deduplicated by resolved path and rewritten to the canonical form under
+    ``missions_dir`` when they refer to the same directory, so the result is
+    independent of filesystem glob ordering.
     """
     nelson_dir = missions_dir.parent
-    active_files = sorted(nelson_dir.glob(".active-*"), reverse=True)
-    for af in active_files:
+    seen_resolved: set[Path] = set()
+    candidates: list[tuple[str, Path]] = []
+    for af in nelson_dir.glob(".active-*"):
         try:
             mission_path = Path(af.read_text(encoding="utf-8").strip())
-            if mission_path.is_dir() and not (mission_path / "stand-down.json").exists():
-                return mission_path
         except OSError:
             continue
+        if not mission_path.is_dir() or (mission_path / "stand-down.json").exists():
+            continue
+        try:
+            resolved = mission_path.resolve()
+        except OSError:
+            continue
+        if resolved in seen_resolved:
+            continue
+        seen_resolved.add(resolved)
+        canonical = missions_dir / mission_path.name
+        if canonical != mission_path:
+            try:
+                if canonical.is_dir() and canonical.resolve() == resolved:
+                    mission_path = canonical
+            except OSError:
+                pass
+        candidates.append((mission_path.name, mission_path))
+    if candidates:
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        return candidates[0][1]
 
     if not missions_dir.is_dir():
         return None
-    candidates = sorted(
+    fallback = sorted(
         (
             d
             for d in missions_dir.iterdir()
@@ -1675,7 +1706,52 @@ def _find_active_mission(missions_dir: Path) -> Path | None:
         key=lambda d: d.name,
         reverse=True,
     )
-    return candidates[0] if candidates else None
+    return fallback[0] if fallback else None
+
+
+def _update_fleet_status_from_event(
+    mission_dir: Path, event: dict, event_id: int
+) -> None:
+    """Apply a state-changing event's delta to fleet-status.json.
+
+    Only event types in FLEET_STATUS_EVENT_TYPES update fleet-status; other
+    types are silently ignored. ``event_id`` is the index returned by
+    ``_append_event`` and is stamped as ``last_event_id``.
+    """
+    if event.get("type") not in FLEET_STATUS_EVENT_TYPES:
+        return
+
+    fs_path = mission_dir / "fleet-status.json"
+    fs = _read_json_optional(fs_path)
+    if fs is None:
+        return
+
+    progress = dict(fs.get("progress", {}))
+
+    def bump(key: str, delta: int) -> None:
+        progress[key] = max(0, progress.get(key, 0) + delta)
+
+    etype = event["type"]
+    if etype == "task_started":
+        bump("in_progress", +1)
+        bump("pending", -1)
+    elif etype == "task_completed":
+        bump("in_progress", -1)
+        bump("completed", +1)
+    elif etype == "blocker_raised":
+        bump("blocked", +1)
+    elif etype == "blocker_resolved":
+        bump("blocked", -1)
+    # hull_threshold_crossed and relief_on_station refresh freshness fields
+    # only; squadron/hull rebuilds happen at checkpoint.
+
+    new_fs = {
+        **fs,
+        "progress": progress,
+        "last_updated": _now_iso(),
+        "last_event_id": event_id,
+    }
+    _write_json(fs_path, new_fs)
 
 
 def _read_handoff_packets(mission_dir: Path) -> list[dict]:
@@ -1691,6 +1767,61 @@ def _read_handoff_packets(mission_dir: Path) -> list[dict]:
     return packets
 
 
+def _compute_fleet_status_staleness(
+    fleet_status: dict | None, mission_log: dict | None
+) -> dict | None:
+    """Return a dict describing fleet-status staleness, or None if fresh.
+
+    Considered stale when either:
+      - last_updated is older than FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+      - mission-log contains events newer than last_event_id
+    """
+    if fleet_status is None:
+        return None
+
+    age_seconds: int | None = None
+    last_updated = fleet_status.get("last_updated")
+    if last_updated:
+        try:
+            ts = datetime.strptime(last_updated, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            )
+            age_seconds = int(
+                (datetime.now(timezone.utc) - ts).total_seconds()
+            )
+        except ValueError:
+            age_seconds = None
+
+    last_event_id = fleet_status.get("last_event_id")
+    events = (mission_log or {}).get("events", [])
+    pending_count = 0
+    last_event_summary: str | None = None
+    if isinstance(last_event_id, int):
+        pending_count = max(0, len(events) - last_event_id - 1)
+        if pending_count:
+            tail = events[-1]
+            tail_data = tail.get("data", {}) or {}
+            tail_id = tail_data.get("task_id")
+            label = tail.get("type", "unknown")
+            last_event_summary = (
+                f"{label} task-{tail_id}" if tail_id is not None else label
+            )
+
+    age_threshold_exceeded = (
+        age_seconds is not None
+        and age_seconds > FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+    )
+    if not age_threshold_exceeded and pending_count == 0:
+        return None
+
+    return {
+        "last_updated": last_updated,
+        "age_seconds": age_seconds,
+        "pending_event_count": pending_count,
+        "last_event_summary": last_event_summary,
+    }
+
+
 def _build_recovery_briefing(
     mission_dir: Path,
     fleet_status: dict | None,
@@ -1699,6 +1830,8 @@ def _build_recovery_briefing(
 ) -> dict:
     """Build a structured recovery briefing from available mission data."""
     tasks = battle_plan.get("tasks", [])
+    mission_log = _read_json_optional(mission_dir / "mission-log.json")
+    staleness = _compute_fleet_status_staleness(fleet_status, mission_log)
 
     pending_tasks = []
     for t in tasks:
@@ -1737,6 +1870,7 @@ def _build_recovery_briefing(
             else "unknown"
         ),
         "fleet_status": fleet_status,
+        "fleet_status_staleness": staleness,
         "handoff_packets": handoff_packets,
         "pending_tasks": pending_tasks,
         "recommended_actions": recommended_actions,
@@ -1749,6 +1883,31 @@ def _format_recovery_text(briefing: dict) -> str:
     lines.append(f"[nelson-data] Recovery briefing for {briefing['mission_dir']}")
     lines.append(f"  Status: {briefing['mission_status']}")
     lines.append("")
+
+    staleness = briefing.get("fleet_status_staleness")
+    if staleness:
+        age = staleness.get("age_seconds")
+        last_updated = staleness.get("last_updated")
+        pending = staleness.get("pending_event_count", 0)
+        last_event = staleness.get("last_event_summary")
+        lines.append("  ⚠ Fleet status may be stale.")
+        if last_updated and age is not None:
+            minutes = age // 60
+            lines.append(
+                f"    fleet-status last updated: {last_updated} "
+                f"({minutes} minutes ago)"
+            )
+        if pending > 0:
+            tail = f" (last: {last_event})" if last_event else ""
+            lines.append(
+                f"    mission-log has {pending} events newer than "
+                f"fleet-status{tail}"
+            )
+        lines.append(
+            "    Verify in-progress task state against handoff packets "
+            "and file state before resuming."
+        )
+        lines.append("")
 
     fs = briefing.get("fleet_status")
     if fs:

@@ -479,6 +479,85 @@ class TestEvent:
         assert len(started) == 3
 
 
+class TestEventFleetStatus:
+    """cmd_event must update fleet-status.json for state-changing events."""
+
+    def test_task_started_increments_in_progress_and_decrements_pending(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        # Baseline: setup_mission_with_task leaves task-1 pending.
+        fs_before = read_json(mission_dir / "fleet-status.json")
+        baseline_in_progress = fs_before["progress"]["in_progress"]
+        baseline_pending = fs_before["progress"]["pending"]
+
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_started",
+            "task_id=1",
+        )
+
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["in_progress"] == baseline_in_progress + 1
+        assert fs["progress"]["pending"] == max(0, baseline_pending - 1)
+        assert "last_updated" in fs
+        assert "last_event_id" in fs
+
+    def test_task_completed_increments_completed_and_decrements_in_progress(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_started",
+            "task_id=1",
+        )
+        run(
+            "event",
+            "--mission-dir", str(mission_dir),
+            "--type", "task_completed",
+            "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["completed"] == 1
+        assert fs["progress"]["in_progress"] == 0
+
+    def test_blocker_raised_and_resolved_round_trip(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "blocker_raised", "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["blocked"] == 1
+
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "blocker_resolved", "task_id=1",
+        )
+        fs = read_json(mission_dir / "fleet-status.json")
+        assert fs["progress"]["blocked"] == 0
+
+    def test_non_state_changing_event_does_not_touch_fleet_status(
+        self, tmp_path: Path
+    ) -> None:
+        mission_dir = setup_mission_with_task(tmp_path)
+        before = read_json(mission_dir / "fleet-status.json")
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "commendation", "ship=HMS Argyll",
+        )
+        after = read_json(mission_dir / "fleet-status.json")
+        # progress, last_updated, and last_event_id are untouched.
+        assert after.get("progress") == before.get("progress")
+        assert after.get("last_updated") == before.get("last_updated")
+        assert after.get("last_event_id") == before.get("last_event_id")
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint
 # ---------------------------------------------------------------------------
@@ -1412,6 +1491,37 @@ class TestRecover:
         assert briefing["mission_dir"] == str(mission_dir)
         assert len(briefing["handoff_packets"]) == 1
 
+    def test_recover_dedupes_markers_pointing_at_same_mission(
+        self, tmp_path: Path
+    ) -> None:
+        """Two markers pointing at the same mission directory using different
+        path forms (relative vs absolute) must resolve to a single canonical
+        mission_dir. Otherwise, glob ordering on different filesystems makes
+        recover non-deterministic."""
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        live_dir = missions_dir / "2026-05-06_120000_aaaaaaaa"
+        live_dir.mkdir()
+        (live_dir / "fleet-status.json").write_text(
+            json.dumps({"version": 1, "mission": {"status": "underway"}}),
+            encoding="utf-8",
+        )
+
+        # Two markers — one absolute, one relative — both point at live_dir.
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            ".nelson/missions/2026-05-06_120000_aaaaaaaa", encoding="utf-8"
+        )
+        (nelson_dir / ".active-zzzzzzzz").write_text(
+            str(live_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(live_dir)
+
     def test_recover_json_output(self, tmp_path: Path) -> None:
         mission_dir = setup_mission_with_task(tmp_path)
         result = run("recover", "--mission-dir", str(mission_dir), "--format", "json")
@@ -1440,6 +1550,117 @@ class TestRecover:
         missions_dir = tmp_path / ".nelson" / "missions"
         result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
         assert "No active mission" in result.stdout
+
+    def test_recover_picks_most_recent_when_multiple_markers(
+        self, tmp_path: Path
+    ) -> None:
+        """Multiple .active-* markers reference different missions. The
+        marker whose referenced mission directory has the latest timestamp
+        prefix must win, regardless of SESSION_ID lexical order."""
+        # Create the older mission first.
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        old_dir = missions_dir / "2026-04-01_100000_zzzzzzzz"
+        new_dir = missions_dir / "2026-05-06_120000_aaaaaaaa"
+        for d in (old_dir, new_dir):
+            d.mkdir()
+            (d / "fleet-status.json").write_text(
+                json.dumps({"version": 1, "mission": {"status": "underway"}}),
+                encoding="utf-8",
+            )
+
+        # SESSION_IDs sort the *opposite* way to mission timestamps.
+        (nelson_dir / ".active-zzzzzzzz").write_text(
+            str(old_dir), encoding="utf-8"
+        )
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            str(new_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(new_dir)
+
+    def test_recover_skips_marker_whose_directory_is_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """A .active-* marker pointing to a deleted directory must be
+        ignored — the next valid candidate wins."""
+        nelson_dir = tmp_path / ".nelson"
+        nelson_dir.mkdir()
+        missions_dir = nelson_dir / "missions"
+        missions_dir.mkdir()
+
+        live_dir = missions_dir / "2026-04-01_100000_aaaaaaaa"
+        live_dir.mkdir()
+        (live_dir / "fleet-status.json").write_text(
+            json.dumps({"version": 1, "mission": {"status": "underway"}}),
+            encoding="utf-8",
+        )
+
+        ghost_dir = missions_dir / "2026-05-06_120000_bbbbbbbb"
+        # Marker references a directory that does not exist.
+        (nelson_dir / ".active-bbbbbbbb").write_text(
+            str(ghost_dir), encoding="utf-8"
+        )
+        (nelson_dir / ".active-aaaaaaaa").write_text(
+            str(live_dir), encoding="utf-8"
+        )
+
+        result = run("recover", "--missions-dir", str(missions_dir), cwd=tmp_path)
+        briefing = json.loads(result.stdout)
+        assert briefing["mission_dir"] == str(live_dir)
+
+    def test_recover_warns_when_fleet_status_is_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """Recovery briefing surfaces a warning when fleet-status was
+        written longer ago than FLEET_STATUS_STALENESS_THRESHOLD_SECONDS
+        OR when mission-log has events newer than last_event_id."""
+        mission_dir = setup_mission_with_task(tmp_path)
+        # Write a stale last_updated and a low last_event_id. Then append
+        # a state-changing event without going through cmd_event so
+        # fleet-status doesn't get refreshed.
+        fs_path = mission_dir / "fleet-status.json"
+        fs = read_json(fs_path)
+        fs["last_updated"] = "2020-01-01T00:00:00Z"
+        fs["last_event_id"] = -1
+        fs_path.write_text(json.dumps(fs), encoding="utf-8")
+
+        # Append an event directly to mission-log so last_event_id < len-1.
+        log_path = mission_dir / "mission-log.json"
+        log = read_json(log_path)
+        log.setdefault("events", []).append(
+            {
+                "type": "task_started",
+                "checkpoint": 0,
+                "timestamp": "2026-05-06T12:00:00Z",
+                "data": {"task_id": 1},
+            }
+        )
+        log_path.write_text(json.dumps(log), encoding="utf-8")
+
+        result = run(
+            "recover", "--mission-dir", str(mission_dir), "--format", "text"
+        )
+        assert "Fleet status may be stale" in result.stdout
+
+    def test_recover_no_warning_when_fleet_status_is_fresh(
+        self, tmp_path: Path
+    ) -> None:
+        """A freshly-written fleet-status produces no staleness warning."""
+        mission_dir = setup_mission_with_task(tmp_path)
+        run(
+            "event", "--mission-dir", str(mission_dir),
+            "--type", "task_started", "task_id=1",
+        )
+        result = run(
+            "recover", "--mission-dir", str(mission_dir), "--format", "text"
+        )
+        assert "Fleet status may be stale" not in result.stdout
 
 
 # ---------------------------------------------------------------------------
