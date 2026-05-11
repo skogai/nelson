@@ -19,6 +19,7 @@ from nelson_data_memory import (
     _find_completed_missions,
     _sync_memory_from_index,
 )
+from nelson_data_patterns import count_pending_candidates
 from nelson_data_utils import (
     JSON_INDENT,
     VALID_ESTIMATE_OUTCOME_METHODS,
@@ -384,6 +385,7 @@ def _build_intelligence_brief(
     stats: dict,
     index_missions: list[dict],
     context: str,
+    candidate_standing_orders: int = 0,
 ) -> dict:
     """Build a structured intelligence brief from memory store data.
 
@@ -457,6 +459,7 @@ def _build_intelligence_brief(
         "top_avoid": [{"pattern": p, "count": c} for p, c in top_avoid],
         "standing_order_hot_spots": hot_spots,
         "precedents": precedents,
+        "candidate_standing_orders": candidate_standing_orders,
     }
 
 
@@ -478,6 +481,13 @@ def _format_brief_text(brief: dict, context: str) -> str:
     if total == 0:
         lines.append("  No mission data available.")
         return "\n".join(lines)
+
+    cso = brief.get("candidate_standing_orders", 0)
+    if cso > 0:
+        lines.append(
+            f"CANDIDATE STANDING ORDERS (awaiting review): {cso}"
+        )
+        lines.append("")
 
     # Patterns to adopt
     top_adopt = brief.get("top_adopt", [])
@@ -547,7 +557,19 @@ def cmd_brief(args: argparse.Namespace) -> None:
 
     stats = _read_json_optional(memory_dir / "standing-order-stats.json") or {}
 
-    brief = _build_intelligence_brief(patterns, stats, index_missions, context)
+    try:
+        candidate_count = count_pending_candidates(memory_dir)
+    except Exception as exc:  # noqa: BLE001 - brief must never crash
+        _err(f"Warning: could not read candidate queue: {exc}")
+        candidate_count = 0
+
+    brief = _build_intelligence_brief(
+        patterns,
+        stats,
+        index_missions,
+        context,
+        candidate_standing_orders=candidate_count,
+    )
 
     if args.json_output:
         print(json.dumps(brief, indent=JSON_INDENT))

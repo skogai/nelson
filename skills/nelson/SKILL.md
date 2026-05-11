@@ -393,7 +393,7 @@ This is a single ask per user across all Nelson projects. Either answer locks th
 
 ## Standing Orders
 
-Consult the specific standing order that matches the situation.
+Consult the specific standing order that matches the situation. The library is empirically extensible: see `scripts/nelson_data_patterns.py` for the promotion workflow that mines new candidate orders from mission patterns and surfaces them for human review.
 
 | Situation | Standing Order |
 |---|---|
