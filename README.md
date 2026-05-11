@@ -5,9 +5,9 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
 [![Stars](https://img.shields.io/github/stars/harrymunro/nelson)](https://github.com/harrymunro/nelson/stargazers)
 
-**Squadron-scale agent coordination for Claude Code — with risk tiers, damage control, and decision logs.**
+**Squadron-scale agent coordination for Claude Code — risk-gated, damage-controlled, fully audited.**
 
-A Claude Code skill that organises multi-agent work into structured naval operations: sailing orders define the mission, captains command parallel workstreams, action stations enforce risk-appropriate controls, and a captain's log captures every decision for audit.
+A Claude Code skill that organises multi-agent work into structured naval operations: sailing orders define the mission, captains command parallel workstreams, action stations enforce risk-appropriate controls, and a captain's log makes every decision auditable.
 
 <!-- markdownlint-disable-next-line MD036 -->
 *4 risk tiers · 11 damage control procedures · 11 mission templates · 7 crew roles · 16 standing orders*
@@ -37,18 +37,20 @@ A Claude Code skill that organises multi-agent work into structured naval operat
 
 ## Quick Start
 
+Install the plugin:
+
 ```
 /plugin marketplace add harrymunro/nelson
 /plugin install nelson@nelson-marketplace
 ```
 
-Then just describe your mission:
+Describe your mission — Nelson loads automatically, no slash command needed:
 
 ```
 Use Nelson to migrate the payment module from Stripe v2 to v3
 ```
 
-Nelson is a Claude Code skill — it loads automatically when your request matches. No slash command needed. See [Prerequisites](#prerequisites) for the full agent-team experience with split panes.
+Nelson will draft sailing orders, present a battle plan for your approval, form a squadron of captains to execute in parallel, run quarterdeck checkpoints, and produce a captain's log when the mission stands down. See [Prerequisites](#prerequisites) for the full agent-team experience with split panes.
 
 ## What it does
 
@@ -88,7 +90,7 @@ It may be overkill if you're doing a quick, single-file edit.
 
 ### How Nelson compares
 
-Both rapid-execution frameworks and Nelson's structured approach are useful — they optimise for different constraints.
+Nelson trades upfront setup time for coordination guarantees:
 
 | Approach | Best when | Trade-off |
 |---|---|---|
@@ -186,13 +188,22 @@ Most agent frameworks assume the happy path. Nelson includes battle-tested proce
 | Red | 40-59% | Relief on station — begin handover |
 | Critical | Below 40% | Immediate relief |
 
-**Relief on station** replaces a ship whose context window is depleted. The damaged ship writes a turnover brief to file, a fresh replacement reads it and continues the mission. Chained reliefs (A -> B -> C) are supported for long-running tasks. The flagship monitors its own hull integrity too and can hand over to a new session.
+Token counts come directly from the API usage data Claude Code records on every assistant turn — no estimation heuristics, no paid APIs, no external dependencies. `scripts/count-tokens.py` extracts them and produces damage reports.
 
-The token counts come from the API usage data that Claude Code already records on every assistant turn — no estimation heuristics, no paid APIs, no external dependencies. A utility script (`scripts/count-tokens.py`) extracts the data and produces damage reports.
+**Relief on station** replaces a ship whose context window is depleted. The damaged ship writes a turnover brief to file; a fresh replacement reads it and continues the mission. Chained reliefs (A → B → C) are supported for long-running tasks. The flagship monitors its own hull integrity too and can hand over to a new session.
 
-**Circuit breakers** (`nelson_circuit_breakers.py`) layer automated, threshold-based alarms on top of the admiral's checkpoint rhythm. Hull integrity, budget burn, cost-per-task, consecutive blockers, and idle timeouts are evaluated at every quarterdeck checkpoint and on `TeammateIdle` hook fires. When a threshold is crossed, an advisory event is appended to the mission log and surfaced to the admiral, who decides the remedy — circuit breakers do not auto-abort.
+**Circuit breakers** layer automated alarms on top of the admiral's checkpoint rhythm — hull integrity, budget burn, cost-per-task, consecutive blockers, and idle timeouts. When a threshold is crossed, an advisory event is appended to the mission log and surfaced to the admiral, who decides the remedy. Circuit breakers do not auto-abort.
 
-Other damage control procedures: man overboard (stuck agent replacement), session resumption (picking up after interruption), partial rollback (reverting faulty work), crew overrun (budget recovery), scuttle and reform (mission abort), comms failure (agent-team infrastructure recovery), session hygiene (clean start procedure), and escalation (chain of command).
+**Other procedures** cover the rest of the failure modes:
+
+- **Man overboard** — replace a stuck agent
+- **Partial rollback** — revert faulty work without aborting the mission
+- **Crew overrun** — recover from budget exhaustion
+- **Scuttle and reform** — abort and reform when the mission cannot succeed
+- **Comms failure** — recover from agent-team infrastructure failure
+- **Session resumption** — pick up after an interruption
+- **Session hygiene** — clean-start procedure for new sessions
+- **Escalation** — chain-of-command for issues beyond current authority
 
 ### Conflict radar
 
@@ -235,19 +246,21 @@ Once every ship has reported on Stand Down, the admiral produces a fleet-wide sy
 
 ### Templates
 
-The skill includes structured templates for consistent output across missions:
+Nelson ships eleven structured templates to keep outputs consistent across missions:
 
-- **Sailing Orders** — Mission definition with outcome, constraints, scope, and stop criteria
-- **Estimate** — Seven-question analytical scaffold (reconnaissance, intent, effects, terrain, forces, coordination, control) used between Sailing Orders and Battle Plan
-- **Battle Plan** — Task breakdown with owners, dependencies, threat tiers, and validation requirements
-- **Ship Manifest** — Captain's crew plan with ship name, crew roles, sub-tasks, and budget
-- **Crew Briefing** — Per-captain deployment brief with mission context, role, ship, and acceptance criteria
-- **Marine Deployment Brief** — Detachment briefing for Royal Marines (recce, assault, sapper) with objective, scope, and reporting expectations
-- **Quarterdeck Report** — Checkpoint status with progress, blockers, budget tracking, and risk updates
-- **Damage Report** — JSON format for hull integrity reporting with token counts and status
-- **Turnover Brief** — Handover document for relief on station with progress log, running plot, and relief chain
-- **Red-Cell Review** — Adversarial review with challenge summary, checks, and recommendation
-- **Captain's Log** — Final report with delivered artifacts, decisions, validation evidence, and follow-ups
+| Template | Used for |
+|---|---|
+| **Sailing Orders** | Mission definition: outcome, constraints, scope, stop criteria |
+| **Estimate** | Seven-question analytical scaffold (reconnaissance, intent, effects, terrain, forces, coordination, control) between Sailing Orders and Battle Plan |
+| **Battle Plan** | Task breakdown with owners, dependencies, threat tiers, validation requirements |
+| **Ship Manifest** | Captain's crew plan: ship name, crew roles, sub-tasks, budget |
+| **Crew Briefing** | Per-captain deployment brief: mission context, role, ship, acceptance criteria |
+| **Marine Deployment Brief** | Detachment briefing for Royal Marines (recce, assault, sapper) |
+| **Quarterdeck Report** | Checkpoint status: progress, blockers, budget tracking, risk updates |
+| **Damage Report** | JSON format for hull integrity reporting with token counts and status |
+| **Turnover Brief** | Handover for relief on station: progress log, running plot, relief chain |
+| **Red-Cell Review** | Adversarial review: challenge summary, checks, recommendation |
+| **Captain's Log** | Final report: delivered artifacts, decisions, validation evidence, follow-ups |
 
 <img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/5955341c-a251-4e05-b0ed-61f424181201" />
 
@@ -342,9 +355,9 @@ You should see `nelson` listed. You can also test it by saying "Use Nelson to...
 <details>
 <summary>Installation for Cursor (Experimental)</summary>
 
-If you have a Team Marketplace for your Cursor you can add nelson there. See [Add a team marketplace](https://cursor.com/docs/plugins#add-a-team-marketplac://cursor.com/docs/plugins#add-a-team-marketplace) in the cursor documentation.  The needed gihub repository url is https://github.com/harrymunro/nelson.git. Once the marketplace is installed you can install nelson from it.
+If you have a Team Marketplace in Cursor, you can add Nelson there. See [Add a team marketplace](https://cursor.com/docs/plugins#add-a-team-marketplace) in the Cursor documentation. The required GitHub repository URL is `https://github.com/harrymunro/nelson.git`. Once the marketplace is installed, you can install Nelson from it.
 
-If you do not have access to a Team Marketplace you can still install locally for Linux and MacOS.
+If you do not have access to a Team Marketplace, you can install locally on Linux and macOS:
 
 ```bash
 cd ~/.cursor/plugins/local
