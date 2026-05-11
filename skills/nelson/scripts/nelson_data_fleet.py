@@ -559,7 +559,10 @@ def cmd_brief(args: argparse.Namespace) -> None:
 
     try:
         candidate_count = count_pending_candidates(memory_dir)
-    except Exception as exc:  # noqa: BLE001 - brief must never crash
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        # Narrow catch: IO and JSON errors are the realistic failure modes for
+        # a corrupt or unreadable queue.  Other exceptions are unexpected and
+        # should propagate so they surface in tests.
         _err(f"Warning: could not read candidate queue: {exc}")
         candidate_count = 0
 

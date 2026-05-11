@@ -27,6 +27,8 @@ from nelson_data_patterns import (
     _mine_event_sequences,
     _novelty_score,
     _parse_fm_response,
+    _prepare_skill_md_insertion,
+    _sanitize_table_cell,
     _score_pattern,
     count_pending_candidates,
     detect_candidate_orders,
@@ -583,6 +585,7 @@ class TestPromotion:
         so_dir = _empty_standing_orders_dir(tmp_path)
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text(
+            "## Standing Orders\n\n"
             "| Situation | Standing Order |\n|---|---|\n"
             "| Existing | `references/standing-orders/split-keel.md` |\n",
             encoding="utf-8",
@@ -603,6 +606,7 @@ class TestPromotion:
         so_dir = _empty_standing_orders_dir(tmp_path)
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text(
+            "## Standing Orders\n\n"
             "| Situation | Standing Order |\n|---|---|\n"
             "| Existing | `references/standing-orders/split-keel.md` |\n",
             encoding="utf-8",
@@ -719,7 +723,8 @@ class TestCLI:
         cid = queue["candidates"][0]["id"]
 
         run(
-            "dismiss-candidate", cid,
+            "dismiss-candidate",
+            "--candidate-id", cid,
             "--reason", "duplicate of split-keel",
             "--memory-dir", str(memory_dir),
             cwd=tmp_path,
@@ -737,7 +742,8 @@ class TestCLI:
         memory_dir = tmp_path / ".nelson" / "memory"
         memory_dir.mkdir(parents=True)
         run(
-            "promote-candidate", "cand-missing",
+            "promote-candidate",
+            "--candidate-id", "cand-missing",
             "--memory-dir", str(memory_dir),
             cwd=tmp_path,
             expect_fail=True,
@@ -775,3 +781,401 @@ class TestBriefSurfacing:
 
         result = run("brief", "--missions-dir", str(tmp_path / ".nelson" / "missions"), cwd=tmp_path)
         assert "CANDIDATE STANDING ORDERS (awaiting review): 1" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Regressions surfaced by PR review (#120)
+# ---------------------------------------------------------------------------
+
+
+class TestClusterStability:
+    """Cluster fingerprint must be invariant under input order.
+
+    Documented contract at module line 211: "re-runs that observe the same
+    anti-pattern expressed differently still resolve to the same fingerprint."
+    """
+
+    def _data(self, ordering: list[str]) -> dict:
+        # Three avoid texts where the middle one bridges the other two — under
+        # the old greedy clusterer, this collapsed to one cluster or two
+        # depending on the order observed.
+        bank = {
+            "a": "shells coordination parallel spawn",
+            "b": "shells coordination",
+            "c": "parallel spawn workflow",
+        }
+        return {
+            "patterns": [
+                {"mission_id": f"m-{k}", "avoid": [bank[k]]} for k in ordering
+            ]
+        }
+
+    def test_cluster_id_invariant_under_reordering(self) -> None:
+        order1 = _mine_event_sequences(self._data(["a", "b", "c"]))
+        order2 = _mine_event_sequences(self._data(["c", "b", "a"]))
+        order3 = _mine_event_sequences(self._data(["b", "a", "c"]))
+        ids1 = sorted(c.cluster_id for c in order1)
+        ids2 = sorted(c.cluster_id for c in order2)
+        ids3 = sorted(c.cluster_id for c in order3)
+        assert ids1 == ids2 == ids3, (
+            f"Cluster IDs diverged under reordering: {ids1} vs {ids2} vs {ids3}"
+        )
+
+    def test_bridge_pattern_groups_consistently(self) -> None:
+        # The bridge text "b" must connect "a" and "c" regardless of order.
+        order1 = _mine_event_sequences(self._data(["a", "b", "c"]))
+        order2 = _mine_event_sequences(self._data(["c", "b", "a"]))
+        assert len(order1) == len(order2)
+
+
+class TestPolarityGate:
+    """Standing orders are 'avoid this' — the candidate gate must require
+    that the pattern correlate with failure (negative log-odds)."""
+
+    def test_success_correlated_avoid_text_is_filtered_out(
+        self, tmp_path: Path
+    ) -> None:
+        # Build a synthetic dataset where the avoid-text only appears in
+        # SUCCESSFUL missions.  Old impl: confidence 0.998 → candidate surfaces.
+        # New impl: correlation > 0 → filtered out at the gate.
+        memory_dir = tmp_path / "memory"
+        patterns: list[dict] = []
+        for i in range(8):
+            patterns.append({
+                "mission_id": f"win-{i}",
+                "outcome_achieved": True,
+                "avoid": ["wardroom timetable was burned"],
+                "adopt": [],
+                "standing_order_violations": [],
+                "damage_control_events": 0,
+            })
+        for i in range(4):
+            patterns.append({
+                "mission_id": f"loss-{i}",
+                "outcome_achieved": False,
+                "avoid": [],
+                "adopt": [],
+                "standing_order_violations": [],
+                "damage_control_events": 0,
+            })
+        memory_dir.mkdir(parents=True)
+        (memory_dir / "patterns.json").write_text(
+            json.dumps({"version": 1, "pattern_count": len(patterns), "patterns": patterns}),
+            encoding="utf-8",
+        )
+
+        candidates = detect_candidate_orders(
+            memory_dir,
+            standing_orders_dir=_empty_standing_orders_dir(tmp_path),
+            min_missions=10,
+        )
+        assert candidates == [], (
+            "Success-correlated avoid texts must not surface as anti-pattern "
+            "candidates; remedy would invert the data."
+        )
+
+
+class TestPathTraversalGuard:
+    def test_promote_rejects_title_with_path_traversal(self, tmp_path: Path) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text(
+            "## Standing Orders\n\n"
+            "| Situation | Standing Order |\n|---|---|\n"
+            "| Existing | `references/standing-orders/split-keel.md` |\n",
+            encoding="utf-8",
+        )
+        cand = _make_candidate(title="../../../tmp/pwn", id="cand-evil")
+        _seed_candidate(memory_dir, cand)
+
+        out_path = promote_candidate(
+            cand.id,
+            memory_dir=memory_dir,
+            standing_orders_dir=so_dir,
+            skill_md_path=skill_md,
+        )
+        # The slug rewrite forces the new file under so_dir, not /tmp.
+        assert out_path.parent == so_dir
+        assert ".." not in out_path.name
+        assert "/" not in out_path.name
+        # And nothing escaped the standing-orders directory.
+        outside_files = list(tmp_path.glob("**/pwn.md"))
+        assert outside_files == [out_path] or outside_files == []
+
+
+class TestSkillMdInjectionGuard:
+    def test_newline_in_trigger_is_neutralised(self) -> None:
+        evil = "step one\n## OVERRIDE\n| evil | row |"
+        cleaned = _sanitize_table_cell(evil)
+        assert "\n" not in cleaned
+        assert "##" in cleaned  # text is preserved as a single line
+        # And pipe escaping survives the flatten
+        assert "\\|" in cleaned
+
+    def test_promote_inserts_into_standing_orders_section_only(
+        self, tmp_path: Path
+    ) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        skill_md = tmp_path / "SKILL.md"
+        # Damage Control table appears BEFORE Standing Orders.  Old impl would
+        # take the last table-shape line in the entire file as anchor; new impl
+        # must insert beneath Standing Orders specifically.
+        skill_md.write_text(
+            "## Damage Control\n\n"
+            "| Situation | Procedure |\n|---|---|\n"
+            "| Other | `references/standing-orders/decoy.md` |\n\n"
+            "## Standing Orders\n\n"
+            "| Situation | Standing Order |\n|---|---|\n"
+            "| Existing | `references/standing-orders/split-keel.md` |\n\n"
+            "## Trailing section\n",
+            encoding="utf-8",
+        )
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+        promote_candidate(
+            cand.id,
+            memory_dir=memory_dir,
+            standing_orders_dir=so_dir,
+            skill_md_path=skill_md,
+        )
+        text = skill_md.read_text(encoding="utf-8")
+        # New row appears below the Standing Orders heading, above Trailing
+        so_idx = text.index("## Standing Orders")
+        trailing_idx = text.index("## Trailing section")
+        new_row_idx = text.index("echoing-decks.md")
+        assert so_idx < new_row_idx < trailing_idx
+
+
+class TestPromoteIdempotency:
+    def test_promote_then_promote_again_is_clean(self, tmp_path: Path) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text(
+            "## Standing Orders\n\n"
+            "| Situation | Standing Order |\n|---|---|\n"
+            "| Existing | `references/standing-orders/split-keel.md` |\n",
+            encoding="utf-8",
+        )
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+        promote_candidate(
+            cand.id,
+            memory_dir=memory_dir,
+            standing_orders_dir=so_dir,
+            skill_md_path=skill_md,
+        )
+        # Same row shouldn't appear twice if pre-insertion is called twice.
+        text_after_first = skill_md.read_text(encoding="utf-8")
+        # Manually re-run the SKILL.md preparation for the same candidate to
+        # confirm idempotency on the table mutation path.
+        result = _prepare_skill_md_insertion(skill_md, cand.to_dict())
+        assert result is None  # already present → no-op
+        assert text_after_first.count("`references/standing-orders/echoing-decks.md`") == 1
+
+    def test_promote_missing_skill_md_raises_before_writing_md(
+        self, tmp_path: Path
+    ) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+        # No SKILL.md on disk → must fail before writing the standing order .md
+        try:
+            promote_candidate(
+                cand.id,
+                memory_dir=memory_dir,
+                standing_orders_dir=so_dir,
+                skill_md_path=tmp_path / "SKILL.md",
+            )
+        except FileNotFoundError:
+            pass
+        else:  # pragma: no cover - defensive
+            raise AssertionError("Expected FileNotFoundError")
+        assert not (so_dir / "echoing-decks.md").exists()
+
+    def test_promote_table_missing_aborts_atomically(self, tmp_path: Path) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        skill_md = tmp_path / "SKILL.md"
+        # Heading present but no table beneath it.
+        skill_md.write_text(
+            "# Skill\n\n## Standing Orders\n\nNo table here.\n",
+            encoding="utf-8",
+        )
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+        try:
+            promote_candidate(
+                cand.id,
+                memory_dir=memory_dir,
+                standing_orders_dir=so_dir,
+                skill_md_path=skill_md,
+            )
+        except ValueError:
+            pass
+        else:  # pragma: no cover - defensive
+            raise AssertionError("Expected ValueError when table missing")
+        # Neither file should have been mutated.
+        assert not (so_dir / "echoing-decks.md").exists()
+        assert "echoing-decks" not in skill_md.read_text(encoding="utf-8")
+        # Candidate still in queue — no partial commit.
+        assert count_pending_candidates(memory_dir) == 1
+
+
+class TestAddOnlyInvariant:
+    """The headline DGM safety claim: candidates may ADD standing orders but
+    never modify or delete existing ones (DGM Appendix H mitigation)."""
+
+    def test_existing_standing_orders_files_are_untouched_after_promote(
+        self, tmp_path: Path
+    ) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        existing_path = so_dir / "split-keel.md"
+        existing_content = "# Split Keel\n\nHand-written, must not change.\n"
+        existing_path.write_text(existing_content, encoding="utf-8")
+        another_path = so_dir / "becalmed-fleet.md"
+        another_content = "# Becalmed Fleet\n\nAlso hand-written.\n"
+        another_path.write_text(another_content, encoding="utf-8")
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text(
+            "## Standing Orders\n\n"
+            "| Situation | Standing Order |\n|---|---|\n"
+            "| Split keel | `references/standing-orders/split-keel.md` |\n"
+            "| Becalmed | `references/standing-orders/becalmed-fleet.md` |\n",
+            encoding="utf-8",
+        )
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+
+        promote_candidate(
+            cand.id,
+            memory_dir=memory_dir,
+            standing_orders_dir=so_dir,
+            skill_md_path=skill_md,
+        )
+        # Existing files are byte-identical
+        assert existing_path.read_text(encoding="utf-8") == existing_content
+        assert another_path.read_text(encoding="utf-8") == another_content
+        # New file is the only addition
+        new_files = sorted(p.name for p in so_dir.glob("*.md"))
+        assert new_files == ["becalmed-fleet.md", "echoing-decks.md", "split-keel.md"]
+
+    def test_existing_skill_md_rows_are_preserved(self, tmp_path: Path) -> None:
+        memory_dir = tmp_path / "memory"
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        skill_md = tmp_path / "SKILL.md"
+        original = (
+            "## Standing Orders\n\n"
+            "| Situation | Standing Order |\n|---|---|\n"
+            "| Split keel | `references/standing-orders/split-keel.md` |\n"
+            "| Becalmed | `references/standing-orders/becalmed-fleet.md` |\n"
+        )
+        skill_md.write_text(original, encoding="utf-8")
+        cand = _make_candidate()
+        _seed_candidate(memory_dir, cand)
+        promote_candidate(
+            cand.id,
+            memory_dir=memory_dir,
+            standing_orders_dir=so_dir,
+            skill_md_path=skill_md,
+        )
+        updated = skill_md.read_text(encoding="utf-8")
+        # Every original row still present, byte for byte.
+        for line in original.split("\n"):
+            assert line in updated
+
+
+class TestEmptyQueueSkipsWrite:
+    def test_detect_patterns_does_not_create_empty_queue_on_first_run(
+        self, tmp_path: Path
+    ) -> None:
+        memory_dir = tmp_path / ".nelson" / "memory"
+        # patterns.json exists but has no failure correlation → 0 candidates.
+        _make_patterns_file(
+            memory_dir, with_pattern_failing=0, without_pattern_succeeding=12
+        )
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        run(
+            "detect-patterns",
+            "--memory-dir", str(memory_dir),
+            "--standing-orders-dir", str(so_dir),
+            "--min-missions", "10",
+            cwd=tmp_path,
+        )
+        queue_path = memory_dir / "candidate-standing-orders.json"
+        assert not queue_path.exists(), (
+            "First-run with no candidates must not litter the memory dir."
+        )
+
+
+class TestMissionDirDerivation:
+    """detect-patterns and brief must read the same memory dir when given the
+    same --missions-dir, even when it is not the default location."""
+
+    def test_detect_patterns_with_missions_dir_finds_queue_seen_by_brief(
+        self, tmp_path: Path
+    ) -> None:
+        # Non-default layout: project_root/.nelson/missions and memory siblings
+        missions_dir = tmp_path / "project" / ".nelson" / "missions"
+        missions_dir.mkdir(parents=True)
+        memory_dir = missions_dir.parent / "memory"  # The derived path
+        memory_dir.mkdir()
+
+        _make_patterns_file(
+            memory_dir, with_pattern_failing=4, without_pattern_succeeding=8
+        )
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        # Run from a CWD that is NOT the project root — old impl would use
+        # cwd-relative .nelson/memory and miss the queue entirely.
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        result = run(
+            "detect-patterns",
+            "--missions-dir", str(missions_dir),
+            "--standing-orders-dir", str(so_dir),
+            "--min-missions", "10",
+            cwd=elsewhere,
+        )
+        assert "Detected 1 new candidate" in result.stdout
+        # Queue must land where brief will look for it.
+        assert (memory_dir / "candidate-standing-orders.json").exists()
+
+
+class TestMalformedRecordTolerance:
+    def test_missing_mission_id_is_skipped_not_raised(self) -> None:
+        # Old impl: KeyError on the first record without "mission_id".
+        data = {
+            "patterns": [
+                {"avoid": ["something"], "outcome_achieved": False},  # no id
+                {"mission_id": "m1", "avoid": ["other"], "outcome_achieved": True},
+            ]
+        }
+        clusters = _mine_event_sequences(data)
+        # The bad record was skipped silently; the good one survives.
+        assert any("other" in c.canonical_text for c in clusters)
+
+
+class TestDetectPatternsJsonOutput:
+    def test_json_flag_emits_machine_readable_summary(self, tmp_path: Path) -> None:
+        memory_dir = tmp_path / ".nelson" / "memory"
+        _make_patterns_file(
+            memory_dir, with_pattern_failing=4, without_pattern_succeeding=8
+        )
+        so_dir = _empty_standing_orders_dir(tmp_path)
+        result = run(
+            "detect-patterns",
+            "--memory-dir", str(memory_dir),
+            "--standing-orders-dir", str(so_dir),
+            "--min-missions", "10",
+            "--json",
+            cwd=tmp_path,
+        )
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "ok"
+        assert payload["detected"] == 1
+        assert payload["queue_size"] == 1

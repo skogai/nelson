@@ -416,9 +416,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Detect candidate standing orders from mission patterns",
     )
     p_dp.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
+    p_dp.add_argument(
         "--memory-dir",
         default=None,
-        help="Memory directory (default: .nelson/memory)",
+        help="Memory directory (overrides --missions-dir derivation)",
     )
     p_dp.add_argument(
         "--standing-orders-dir",
@@ -440,17 +445,33 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_CONFIDENCE_THRESHOLD})"
         ),
     )
+    p_dp.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit a JSON summary to stdout instead of a free-text message",
+    )
 
     # --- promote-candidate ---
     p_pc = subs.add_parser(
         "promote-candidate",
         help="Promote a candidate to a real standing order",
     )
-    p_pc.add_argument("candidate_id", help="Candidate ID (e.g. cand-abc123)")
+    p_pc.add_argument(
+        "--candidate-id",
+        dest="candidate_id",
+        required=True,
+        help="Candidate ID (e.g. cand-abc123)",
+    )
+    p_pc.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
     p_pc.add_argument(
         "--memory-dir",
         default=None,
-        help="Memory directory (default: .nelson/memory)",
+        help="Memory directory (overrides --missions-dir derivation)",
     )
 
     # --- dismiss-candidate ---
@@ -458,16 +479,26 @@ def build_parser() -> argparse.ArgumentParser:
         "dismiss-candidate",
         help="Dismiss a candidate (archived so it is not re-proposed)",
     )
-    p_dc.add_argument("candidate_id", help="Candidate ID (e.g. cand-abc123)")
+    p_dc.add_argument(
+        "--candidate-id",
+        dest="candidate_id",
+        required=True,
+        help="Candidate ID (e.g. cand-abc123)",
+    )
     p_dc.add_argument(
         "--reason",
         required=True,
         help="Why this candidate is being dismissed",
     )
     p_dc.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
+    p_dc.add_argument(
         "--memory-dir",
         default=None,
-        help="Memory directory (default: .nelson/memory)",
+        help="Memory directory (overrides --missions-dir derivation)",
     )
 
     return parser

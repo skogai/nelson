@@ -323,6 +323,68 @@ python3 .claude/skills/nelson/scripts/nelson-data.py analytics \
   --metric all --json --last 10
 ```
 
+### `detect-patterns` — Mine candidate standing orders (read/write memory)
+
+Run after a mission stand-down (and after `index`) to surface anti-patterns that recur across the fleet. The detector clusters `avoid` texts, scores each cluster with Fisher's exact + log-odds against mission outcomes, drops anything resembling an existing standing order or a previously dismissed candidate, requires a negative correlation with success (anti-patterns only — not patterns that correlate with wins), and appends survivors to the candidate queue for human review. No standing orders are written or modified by this command — promotion is always a separate, human-initiated step.
+
+```bash
+python3 .claude/skills/nelson/scripts/nelson-data.py detect-patterns \
+  --missions-dir .nelson/missions
+```
+
+Arguments:
+
+- `--missions-dir` — Missions directory. Memory dir is derived as `{missions_dir}/../memory` (matches `brief`).
+- `--memory-dir` — Override the derived memory directory.
+- `--standing-orders-dir` — Where to scan for existing orders during the novelty filter. Defaults to the skill's `references/standing-orders/`.
+- `--min-missions N` — Minimum recorded missions before detection runs (default 10).
+- `--confidence-threshold F` — Drop candidates whose `1 - p_value` is below this (default 0.7).
+- `--json` — Emit a JSON `{status, detected, queue_size, memory_dir}` summary on stdout instead of free text. Useful for CI gates that want to fail on new high-confidence candidates.
+
+Output: appends to `{memory_dir}/candidate-standing-orders.json`. On a first run with zero candidates the queue file is not created, to avoid littering the memory dir.
+
+### `promote-candidate` — Promote a candidate to a standing order
+
+Promote writes a new `.md` under the standing-orders directory, inserts a row into the SKILL.md Standing Orders lookup table, and removes the candidate from the pending queue. Promotion is transactional: if any step fails the previous step is rolled back so the repo does not end up with an orphan `.md` or a half-edited SKILL.md.
+
+```bash
+python3 .claude/skills/nelson/scripts/nelson-data.py promote-candidate \
+  --candidate-id cand-abc123 \
+  --missions-dir .nelson/missions
+```
+
+Arguments:
+
+- `--candidate-id` (required) — The candidate's id from the queue.
+- `--missions-dir` / `--memory-dir` — Same resolution rules as `detect-patterns`.
+
+Failure modes (exit 1, message on stderr):
+
+- Candidate id not found in the queue.
+- A standing order with the same title already exists (refuses to overwrite hand-written orders).
+- SKILL.md is missing, or its `## Standing Orders` heading / lookup table cannot be located.
+
+The title is re-slugified at the promotion boundary so a hand-edited queue entry cannot escape the standing-orders directory via path traversal. Free-text fields are sanitised before being written into the SKILL.md table cell.
+
+### `dismiss-candidate` — Archive a candidate so it is not re-proposed
+
+Move a candidate to the dismissed archive. Subsequent `detect-patterns` runs will not re-surface the same fingerprint, so reviewers are not asked the same question twice.
+
+```bash
+python3 .claude/skills/nelson/scripts/nelson-data.py dismiss-candidate \
+  --candidate-id cand-abc123 \
+  --reason "duplicate of split-keel" \
+  --missions-dir .nelson/missions
+```
+
+Arguments:
+
+- `--candidate-id` (required).
+- `--reason` (required) — Free text recorded in the archive for future reference.
+- `--missions-dir` / `--memory-dir` — Same resolution rules as `detect-patterns`.
+
+Output: writes `{memory_dir}/dismissed-candidates.json`.
+
 ## Phase Engine
 
 The `nelson-phase.py` script manages the deterministic phase engine. It enforces phase transitions with defined entry/exit criteria and validates phase-appropriate tool usage via PreToolUse hooks.

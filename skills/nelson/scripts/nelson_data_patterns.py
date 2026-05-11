@@ -36,6 +36,9 @@ from math import exp, lgamma, log
 from pathlib import Path
 from typing import Callable
 
+import os
+import tempfile
+
 from nelson_data_utils import (
     _die,
     _err,
@@ -44,6 +47,27 @@ from nelson_data_utils import (
     _read_json_optional,
     _write_json,
 )
+
+
+def _write_text_atomic(path: Path, content: str) -> None:
+    """Write text atomically via tempfile + os.replace.
+
+    Matches the durability properties of ``_write_json`` for non-JSON files
+    (SKILL.md, rendered standing orders) so a crash mid-write cannot leave a
+    torn file behind.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # Type alias for FM synthesis client. Receives a prompt, returns response text
@@ -152,8 +176,19 @@ class Candidate:
 # ---------------------------------------------------------------------------
 
 
+def _default_missions_dir() -> Path:
+    return Path(".nelson/missions")
+
+
 def _default_memory_dir() -> Path:
-    return Path(".nelson/memory")
+    """Default memory dir derived the same way sibling modules derive theirs.
+
+    Matches ``nelson_data_memory._resolve_memory_dir`` and ``cmd_brief``:
+    ``{missions_dir}/../memory``. Without this consistency, ``detect-patterns``
+    would write a queue that ``brief`` could not see under a non-default
+    ``--missions-dir``.
+    """
+    return _default_missions_dir().parent / "memory"
 
 
 def _default_standing_orders_dir() -> Path:
@@ -230,48 +265,76 @@ def _mine_event_sequences(
     phrasings are grouped using Jaccard token similarity so that
     "Spawning too many shells" and "Spawning many shells at once" collapse
     into the same cluster.
-    """
-    raw_inputs = [
-        (p["mission_id"], text, _tokenize(text))
-        for p in patterns_data.get("patterns", [])
-        for text in (p.get("avoid", []) or [])
-        if text
-    ]
 
-    clusters: list[dict] = []
-    for mission_id, text, tokens in raw_inputs:
-        if not tokens:
+    The clusterer uses an order-independent union-find pass: every pair of
+    inputs whose Jaccard similarity meets ``similarity_threshold`` ends up in
+    the same cluster regardless of the order they were observed in.  This
+    keeps the resulting ``cluster_id`` stable across reruns and across
+    missions appended in different sequences — essential for the dismissed
+    archive to keep working.
+    """
+    raw_inputs: list[tuple[str, str, frozenset[str]]] = []
+    for p in patterns_data.get("patterns", []):
+        mission_id = p.get("mission_id")
+        if not mission_id:
             continue
-        match_idx = -1
-        best_sim = 0.0
-        for i, c in enumerate(clusters):
-            sim = _jaccard(tokens, c["tokens"])
-            if sim >= similarity_threshold and sim > best_sim:
-                best_sim = sim
-                match_idx = i
-        if match_idx == -1:
-            clusters.append({
-                "canonical": text,
-                "canonical_tokens": set(tokens),
-                "variants": {text},
-                "missions": {mission_id},
-                "tokens": set(tokens),
-            })
-        else:
-            c = clusters[match_idx]
-            c["variants"].add(text)
-            c["missions"].add(mission_id)
-            c["tokens"] |= tokens
+        for text in p.get("avoid", []) or []:
+            if not text:
+                continue
+            tokens = frozenset(_tokenize(text))
+            if not tokens:
+                continue
+            raw_inputs.append((mission_id, text, tokens))
+
+    if not raw_inputs:
+        return []
+
+    # Sort inputs deterministically so identical data always produces identical
+    # cluster assignments.
+    raw_inputs.sort(key=lambda r: (r[1], r[0]))
+
+    # Union-find over input indices, joined when Jaccard >= threshold.
+    parent = list(range(len(raw_inputs)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    for i in range(len(raw_inputs)):
+        for j in range(i + 1, len(raw_inputs)):
+            if _jaccard(raw_inputs[i][2], raw_inputs[j][2]) >= similarity_threshold:
+                union(i, j)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(len(raw_inputs)):
+        groups.setdefault(find(i), []).append(i)
 
     out: list[RawPattern] = []
-    for c in clusters:
-        cluster_id = _canonical_fingerprint(c["canonical_tokens"])
+    for indices in groups.values():
+        members = [raw_inputs[i] for i in indices]
+        all_tokens: set[str] = set()
+        for _, _, toks in members:
+            all_tokens |= toks
+        variants = tuple(sorted({m[1] for m in members}))
+        missions = tuple(sorted({m[0] for m in members}))
+        # Canonical text is the shortest variant (ties broken alphabetically)
+        # so re-runs always pick the same representative even if the order of
+        # observation differs.
+        canonical = min(variants, key=lambda v: (len(v), v))
         out.append(RawPattern(
-            cluster_id=cluster_id,
-            canonical_text=c["canonical"],
-            variants=tuple(sorted(c["variants"])),
-            mission_ids=tuple(sorted(c["missions"])),
+            cluster_id=_canonical_fingerprint(all_tokens),
+            canonical_text=canonical,
+            variants=variants,
+            mission_ids=missions,
         ))
+    out.sort(key=lambda r: r.cluster_id)
     return out
 
 
@@ -363,8 +426,11 @@ def _score_pattern(raw: RawPattern, all_patterns: list[dict]) -> ScoredPattern:
     successes_without = 0
     failures_without = 0
     for p in all_patterns:
+        mission_id = p.get("mission_id")
+        if not mission_id:
+            continue
         achieved = bool(p.get("outcome_achieved"))
-        if p["mission_id"] in missions_with_set:
+        if mission_id in missions_with_set:
             if achieved:
                 successes_with += 1
             else:
@@ -763,6 +829,12 @@ def detect_candidate_orders(
             continue
         if sp.novelty < novelty_threshold:
             continue
+        # Polarity guard: a standing order tells captains to AVOID the pattern,
+        # so the pattern must correlate with failure (negative log-odds).
+        # A success-correlated avoid-text passing this filter would surface a
+        # candidate whose remedy is the inverse of what the data shows.
+        if sp.correlation >= 0:
+            continue
         scored.append(sp)
 
     # Pre-rank with the same heuristic the review queue uses, so synthesis
@@ -805,9 +877,16 @@ def promote_candidate(
     if candidate is None:
         raise ValueError(f"Candidate {candidate_id!r} not found in queue")
 
-    title = candidate.get("title", "").strip()
-    if not title:
+    raw_title = candidate.get("title", "").strip()
+    if not raw_title:
         raise ValueError(f"Candidate {candidate_id!r} has no title")
+    # Re-slugify at the promotion boundary: the on-disk queue is data that may
+    # have been hand-edited, so we cannot trust ``title`` to be a safe filename.
+    # Without this, a title like "../../../tmp/pwn" would escape the
+    # standing-orders directory.
+    title = _slugify(raw_title)
+    if title != raw_title:
+        candidate = {**candidate, "title": title}
 
     standing_orders_dir.mkdir(parents=True, exist_ok=True)
     out_path = standing_orders_dir / f"{title}.md"
@@ -817,8 +896,22 @@ def promote_candidate(
             "Edit the candidate title to disambiguate."
         )
 
-    out_path.write_text(_render_standing_order(candidate), encoding="utf-8")
-    _add_skill_md_row(skill_md_path, candidate)
+    # Pre-flight the SKILL.md edit before touching disk so a failed table
+    # update doesn't leave an orphan .md alongside an unchanged SKILL.md.
+    skill_md_lines = _prepare_skill_md_insertion(skill_md_path, candidate)
+
+    _write_text_atomic(out_path, _render_standing_order(candidate))
+    if skill_md_lines is not None:
+        try:
+            _write_text_atomic(skill_md_path, "\n".join(skill_md_lines))
+        except Exception:
+            # Roll back the standing-order .md so promote_candidate stays
+            # transactional from the caller's perspective.
+            try:
+                out_path.unlink()
+            except OSError:
+                pass
+            raise
 
     remaining = [c for c in candidates if c.get("id") != candidate_id]
     _save_candidates(candidates_path, remaining)
@@ -921,47 +1014,85 @@ def _render_standing_order(candidate: dict) -> str:
     )
 
 
+_SKILL_MD_SECTION_HEADING = "## Standing Orders"
 _SKILL_MD_TABLE_ROW_RE = re.compile(
     r"^\|.*`references/standing-orders/[^`]+\.md`\s*\|\s*$",
 )
 
 
-def _add_skill_md_row(skill_md_path: Path, candidate: dict) -> None:
-    """Append a new row to the Standing Orders lookup table in SKILL.md.
+def _sanitize_table_cell(text: str) -> str:
+    """Render free-text safely into a single markdown table cell.
 
-    Idempotent: skips if a row referencing the same target file already
-    exists.  If the table cannot be located the function emits a warning
-    on stderr and returns (the standing order .md still landed on disk;
-    the human reviewer can wire up the table manually).
+    Collapses any newline or carriage return into a space so that the cell
+    cannot break out of its row and inject arbitrary markdown (headings,
+    extra rows, prose) into SKILL.md.  Pipes are escaped so the cell does
+    not split into multiple columns.
+    """
+    flattened = " ".join(text.split())  # collapses all whitespace incl. \n, \r, \t
+    return flattened.replace("|", "\\|").strip()
+
+
+def _prepare_skill_md_insertion(
+    skill_md_path: Path,
+    candidate: dict,
+) -> list[str] | None:
+    """Compute the SKILL.md line list with the new row inserted.
+
+    Returns the new line list ready to be written, or ``None`` if no write is
+    needed (row already present — idempotent re-promotion).
+
+    Raises ``FileNotFoundError`` if SKILL.md is missing and ``ValueError`` if
+    the Standing Orders table cannot be located inside the expected section.
+    Pre-flighting the edit means ``promote_candidate`` does not write the
+    standing order .md until we know the table mutation will succeed.
     """
     if not skill_md_path.exists():
-        _err(f"Warning: SKILL.md not found at {skill_md_path}; skipping table update")
-        return
+        raise FileNotFoundError(
+            f"SKILL.md not found at {skill_md_path}; cannot update lookup table"
+        )
 
     text = skill_md_path.read_text(encoding="utf-8")
     title = candidate.get("title", "")
     target = f"`references/standing-orders/{title}.md`"
     if target in text:
-        return
+        return None
 
     lines = text.split("\n")
-    last_row_idx = -1
+
+    # Locate the "## Standing Orders" section so we never insert a row beneath
+    # a similar-shape table elsewhere (e.g. Damage Control).
+    section_start = -1
+    section_end = len(lines)
     for i, line in enumerate(lines):
-        if _SKILL_MD_TABLE_ROW_RE.match(line):
+        if line.strip() == _SKILL_MD_SECTION_HEADING:
+            section_start = i
+            break
+    if section_start == -1:
+        raise ValueError(
+            f"Could not locate '{_SKILL_MD_SECTION_HEADING}' heading in SKILL.md"
+        )
+    for i in range(section_start + 1, len(lines)):
+        stripped = lines[i].lstrip()
+        if stripped.startswith("## "):
+            section_end = i
+            break
+
+    last_row_idx = -1
+    for i in range(section_start, section_end):
+        if _SKILL_MD_TABLE_ROW_RE.match(lines[i]):
             last_row_idx = i
     if last_row_idx == -1:
-        _err(
-            "Warning: could not locate Standing Orders table in SKILL.md; "
-            "table row not inserted."
+        raise ValueError(
+            "Found Standing Orders heading but no lookup table rows below it"
         )
-        return
 
-    trigger = candidate.get("trigger", "").replace("|", "\\|").strip()
+    trigger = _sanitize_table_cell(candidate.get("trigger", ""))
     if not trigger:
         trigger = f"Auto-promoted candidate: {title}"
     new_row = f"| {trigger} | {target} |"
-    lines.insert(last_row_idx + 1, new_row)
-    skill_md_path.write_text("\n".join(lines), encoding="utf-8")
+    new_lines = list(lines)
+    new_lines.insert(last_row_idx + 1, new_row)
+    return new_lines
 
 
 # ---------------------------------------------------------------------------
@@ -970,9 +1101,25 @@ def _add_skill_md_row(skill_md_path: Path, candidate: dict) -> None:
 
 
 def _resolve_memory_dir(args: argparse.Namespace) -> Path:
-    """Return the memory directory from --memory-dir or the default."""
-    raw = getattr(args, "memory_dir", None)
-    return Path(raw) if raw else _default_memory_dir()
+    """Return the memory directory using the same rules as the rest of nelson-data.
+
+    Precedence:
+      1. ``--memory-dir`` if given explicitly.
+      2. ``--missions-dir`` if given — derive ``{missions_dir}/../memory`` to
+         match ``nelson_data_memory._resolve_memory_dir`` and ``cmd_brief``.
+      3. Default to ``.nelson/missions/../memory``.
+
+    Without this, ``detect-patterns`` and ``brief`` could disagree on where the
+    candidate queue lives whenever the user runs Nelson outside the default
+    ``.nelson/missions`` layout.
+    """
+    raw_memory = getattr(args, "memory_dir", None)
+    if raw_memory:
+        return Path(raw_memory)
+    raw_missions = getattr(args, "missions_dir", None)
+    if raw_missions:
+        return Path(raw_missions).parent / "memory"
+    return _default_memory_dir()
 
 
 def cmd_detect_patterns(args: argparse.Namespace) -> None:
@@ -983,11 +1130,28 @@ def cmd_detect_patterns(args: argparse.Namespace) -> None:
         if getattr(args, "standing_orders_dir", None)
         else _default_standing_orders_dir()
     )
+    json_output = bool(getattr(args, "json_output", False))
+
+    def _emit(status: str, detected: int, queue_size: int, message: str) -> None:
+        if json_output:
+            print(json.dumps({
+                "status": status,
+                "detected": detected,
+                "queue_size": queue_size,
+                "memory_dir": str(memory_dir),
+            }, indent=2))
+        else:
+            print(f"[nelson-data] {message}")
 
     if not (memory_dir / "patterns.json").exists():
-        print(
-            "[nelson-data] No patterns.json yet — nothing to detect. "
-            f"(Expected: {memory_dir / 'patterns.json'})"
+        _emit(
+            status="no-patterns",
+            detected=0,
+            queue_size=count_pending_candidates(memory_dir),
+            message=(
+                "No patterns.json yet — nothing to detect. "
+                f"(Expected: {memory_dir / 'patterns.json'})"
+            ),
         )
         return
 
@@ -1012,9 +1176,11 @@ def cmd_detect_patterns(args: argparse.Namespace) -> None:
     # Skip persistence if there's nothing on disk and nothing to add — avoids
     # littering the memory dir with empty queue files on first-runs.
     if not merged and not _candidates_path(memory_dir).exists():
-        print(
-            f"[nelson-data] Detected {len(appended)} new candidate(s); "
-            "queue is empty."
+        _emit(
+            status="ok",
+            detected=len(appended),
+            queue_size=0,
+            message=f"Detected {len(appended)} new candidate(s); queue is empty.",
         )
         return
 
@@ -1025,9 +1191,13 @@ def cmd_detect_patterns(args: argparse.Namespace) -> None:
     ]
     _save_candidates(_candidates_path(memory_dir), ranked)
 
-    print(
-        f"[nelson-data] Detected {len(appended)} new candidate(s); "
-        f"queue size: {len(ranked)}"
+    _emit(
+        status="ok",
+        detected=len(appended),
+        queue_size=len(ranked),
+        message=(
+            f"Detected {len(appended)} new candidate(s); queue size: {len(ranked)}"
+        ),
     )
 
 
