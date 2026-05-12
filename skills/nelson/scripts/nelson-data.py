@@ -45,6 +45,13 @@ from nelson_data_lifecycle import (
     cmd_status,
     cmd_task,
 )
+from nelson_data_patterns import (
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_MIN_MISSIONS,
+    cmd_detect_patterns,
+    cmd_dismiss_candidate,
+    cmd_promote_candidate,
+)
 from nelson_data_utils import (
     VALID_ESTIMATE_OUTCOME_METHODS,
     VALID_ESTIMATE_OUTCOME_STATUSES,
@@ -403,6 +410,97 @@ def build_parser() -> argparse.ArgumentParser:
         "--last", type=int, default=0, help="Limit to last N missions (0=all)"
     )
 
+    # --- detect-patterns ---
+    p_dp = subs.add_parser(
+        "detect-patterns",
+        help="Detect candidate standing orders from mission patterns",
+    )
+    p_dp.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
+    p_dp.add_argument(
+        "--memory-dir",
+        default=None,
+        help="Memory directory (overrides --missions-dir derivation)",
+    )
+    p_dp.add_argument(
+        "--standing-orders-dir",
+        default=None,
+        help="Standing orders directory (default: skill references dir)",
+    )
+    p_dp.add_argument(
+        "--min-missions",
+        type=int,
+        default=DEFAULT_MIN_MISSIONS,
+        help=f"Minimum missions before detection runs (default: {DEFAULT_MIN_MISSIONS})",
+    )
+    p_dp.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=DEFAULT_CONFIDENCE_THRESHOLD,
+        help=(
+            "Drop candidates below this confidence "
+            f"(default: {DEFAULT_CONFIDENCE_THRESHOLD})"
+        ),
+    )
+    p_dp.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit a JSON summary to stdout instead of a free-text message",
+    )
+
+    # --- promote-candidate ---
+    p_pc = subs.add_parser(
+        "promote-candidate",
+        help="Promote a candidate to a real standing order",
+    )
+    p_pc.add_argument(
+        "--candidate-id",
+        dest="candidate_id",
+        required=True,
+        help="Candidate ID (e.g. cand-abc123)",
+    )
+    p_pc.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
+    p_pc.add_argument(
+        "--memory-dir",
+        default=None,
+        help="Memory directory (overrides --missions-dir derivation)",
+    )
+
+    # --- dismiss-candidate ---
+    p_dc = subs.add_parser(
+        "dismiss-candidate",
+        help="Dismiss a candidate (archived so it is not re-proposed)",
+    )
+    p_dc.add_argument(
+        "--candidate-id",
+        dest="candidate_id",
+        required=True,
+        help="Candidate ID (e.g. cand-abc123)",
+    )
+    p_dc.add_argument(
+        "--reason",
+        required=True,
+        help="Why this candidate is being dismissed",
+    )
+    p_dc.add_argument(
+        "--missions-dir",
+        default=None,
+        help="Missions directory (memory dir derived as {missions_dir}/../memory)",
+    )
+    p_dc.add_argument(
+        "--memory-dir",
+        default=None,
+        help="Memory directory (overrides --missions-dir derivation)",
+    )
+
     return parser
 
 
@@ -442,6 +540,9 @@ def main() -> None:
         "history": lambda: cmd_history(args),
         "brief": lambda: cmd_brief(args),
         "analytics": lambda: cmd_analytics(args),
+        "detect-patterns": lambda: cmd_detect_patterns(args),
+        "promote-candidate": lambda: cmd_promote_candidate(args),
+        "dismiss-candidate": lambda: cmd_dismiss_candidate(args),
     }
 
     handler = dispatch.get(args.command)
