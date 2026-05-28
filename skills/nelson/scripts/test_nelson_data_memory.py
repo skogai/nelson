@@ -7,7 +7,6 @@ and memory store operations (patterns, standing order stats).
 from __future__ import annotations
 
 import json
-import os
 import stat
 import subprocess
 import sys
@@ -22,9 +21,6 @@ from conftest import (
     read_json,
     run,
 )
-
-from nelson_data_utils import _write_json
-
 
 # ---------------------------------------------------------------------------
 # C1: _write_json crash/cleanup — original file preserved, no .tmp leftovers
@@ -54,7 +50,8 @@ class TestWriteJsonCrashCleanup:
             # inside the read-only directory.
             result = subprocess.run(
                 [
-                    sys.executable, "-c",
+                    sys.executable,
+                    "-c",
                     (
                         f"import sys; sys.path.insert(0, '{SCRIPT.parent}');"
                         "from pathlib import Path;"
@@ -64,6 +61,7 @@ class TestWriteJsonCrashCleanup:
                 ],
                 capture_output=True,
                 text=True,
+                check=False,
             )
             assert result.returncode != 0, "Expected _write_json to fail"
 
@@ -88,7 +86,8 @@ class TestWriteJsonCrashCleanup:
         try:
             result = subprocess.run(
                 [
-                    sys.executable, "-c",
+                    sys.executable,
+                    "-c",
                     (
                         f"import sys; sys.path.insert(0, '{SCRIPT.parent}');"
                         "from pathlib import Path;"
@@ -98,6 +97,7 @@ class TestWriteJsonCrashCleanup:
                 ],
                 capture_output=True,
                 text=True,
+                check=False,
             )
             assert result.returncode != 0
         finally:
@@ -119,9 +119,12 @@ class TestReadJsonOptionalOSError:
         sd_path = mission_dir / "stand-down.json"
         sd_path.chmod(0o000)
         try:
-            result = run(
-                "index", "--missions-dir", str(missions_dir),
-                "--rebuild", cwd=tmp_path,
+            run(
+                "index",
+                "--missions-dir",
+                str(missions_dir),
+                "--rebuild",
+                cwd=tmp_path,
             )
             # The mission should be skipped (no crash), and we may see a warning
             # Either stderr has a warning OR the mission was simply skipped
@@ -147,11 +150,15 @@ class TestMemoryStore:
         run("plan-approved", "--mission-dir", str(mission_dir))
         run(
             "stand-down",
-            "--mission-dir", str(mission_dir),
+            "--mission-dir",
+            str(mission_dir),
             "--outcome-achieved",
-            "--actual-outcome", "Done",
-            "--metric-result", "Pass",
-            "--adopt", "Good pattern",
+            "--actual-outcome",
+            "Done",
+            "--metric-result",
+            "Pass",
+            "--adopt",
+            "Good pattern",
         )
         patterns_path = tmp_path / ".nelson" / "memory" / "patterns.json"
         assert patterns_path.exists()
@@ -175,11 +182,15 @@ class TestMemoryStore:
             run("plan-approved", "--mission-dir", str(mission_dir))
             run(
                 "stand-down",
-                "--mission-dir", str(mission_dir),
+                "--mission-dir",
+                str(mission_dir),
                 "--outcome-achieved",
-                "--actual-outcome", f"Mission {i}",
-                "--metric-result", "Pass",
-                "--adopt", f"Pattern {i}",
+                "--actual-outcome",
+                f"Mission {i}",
+                "--metric-result",
+                "Pass",
+                "--adopt",
+                f"Pattern {i}",
             )
         patterns_path = tmp_path / ".nelson" / "memory" / "patterns.json"
         data = read_json(patterns_path)
@@ -193,19 +204,28 @@ class TestMemoryStore:
         run("plan-approved", "--mission-dir", str(mission_dir))
         run(
             "event",
-            "--mission-dir", str(mission_dir),
-            "--type", "standing_order_violation",
-            "--order", "split-keel",
-            "--description", "File overlap",
-            "--severity", "medium",
-            "--corrective-action", "Reassigned",
+            "--mission-dir",
+            str(mission_dir),
+            "--type",
+            "standing_order_violation",
+            "--order",
+            "split-keel",
+            "--description",
+            "File overlap",
+            "--severity",
+            "medium",
+            "--corrective-action",
+            "Reassigned",
         )
         run(
             "stand-down",
-            "--mission-dir", str(mission_dir),
+            "--mission-dir",
+            str(mission_dir),
             "--outcome-achieved",
-            "--actual-outcome", "Done",
-            "--metric-result", "Pass",
+            "--actual-outcome",
+            "Done",
+            "--metric-result",
+            "Pass",
         )
         stats_path = tmp_path / ".nelson" / "memory" / "standing-order-stats.json"
         assert stats_path.exists()
@@ -229,10 +249,13 @@ class TestMemoryStore:
         try:
             result = run(
                 "stand-down",
-                "--mission-dir", str(mission_dir),
+                "--mission-dir",
+                str(mission_dir),
                 "--outcome-achieved",
-                "--actual-outcome", "Done",
-                "--metric-result", "Pass",
+                "--actual-outcome",
+                "Done",
+                "--metric-result",
+                "Pass",
             )
             # Stand-down should succeed despite memory store failure
             sd = read_json(mission_dir / "stand-down.json")
@@ -249,20 +272,30 @@ class TestMemoryStore:
         run("plan-approved", "--mission-dir", str(mission_dir))
         run(
             "event",
-            "--mission-dir", str(mission_dir),
-            "--type", "standing_order_violation",
-            "--order", "skeleton-crew",
-            "--description", "Too few agents",
-            "--severity", "low",
-            "--corrective-action", "Added crew",
+            "--mission-dir",
+            str(mission_dir),
+            "--type",
+            "standing_order_violation",
+            "--order",
+            "skeleton-crew",
+            "--description",
+            "Too few agents",
+            "--severity",
+            "low",
+            "--corrective-action",
+            "Added crew",
         )
         run(
             "stand-down",
-            "--mission-dir", str(mission_dir),
+            "--mission-dir",
+            str(mission_dir),
             "--outcome-achieved",
-            "--actual-outcome", "Done",
-            "--metric-result", "Pass",
-            "--avoid", "Under-crewing ships",
+            "--actual-outcome",
+            "Done",
+            "--metric-result",
+            "Pass",
+            "--avoid",
+            "Under-crewing ships",
         )
         patterns_path = tmp_path / ".nelson" / "memory" / "patterns.json"
         data = read_json(patterns_path)
@@ -280,11 +313,15 @@ class TestMemoryStore:
 
         sd_args = [
             "stand-down",
-            "--mission-dir", str(mission_dir),
+            "--mission-dir",
+            str(mission_dir),
             "--outcome-achieved",
-            "--actual-outcome", "Done",
-            "--metric-result", "Pass",
-            "--adopt", "Good pattern",
+            "--actual-outcome",
+            "Done",
+            "--metric-result",
+            "Pass",
+            "--adopt",
+            "Good pattern",
         ]
         run(*sd_args)
         run(*sd_args)  # second call — should be idempotent

@@ -22,10 +22,10 @@ try:
     import fcntl
 except ImportError:
     fcntl = None
-from datetime import datetime, timezone
+from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generator
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -64,9 +64,7 @@ VALID_HANDOFF_TYPES = frozenset(
 VALID_DECISIONS = frozenset({"continue", "rescope", "stop"})
 VALID_MODES = frozenset({"single-session", "subagents", "agent-team"})
 VALID_ESTIMATE_OUTCOME_STATUSES = frozenset({"pass", "fail", "not-verified"})
-VALID_ESTIMATE_OUTCOME_METHODS = frozenset(
-    {"test", "type-check", "lint", "review", "visual"}
-)
+VALID_ESTIMATE_OUTCOME_METHODS = frozenset({"test", "type-check", "lint", "review", "visual"})
 JSON_INDENT = 2
 
 FLEET_STATUS_EVENT_TYPES = frozenset(
@@ -95,12 +93,12 @@ ADMIRAL_SESSION_MARKER = "admiral.session"
 
 def _now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _mission_dir_stamp() -> str:
     """Return a timestamped directory name fragment."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+    return datetime.now(UTC).strftime("%Y-%m-%d_%H%M%S")
 
 
 SESSION_ID_LEN = 8
@@ -165,7 +163,7 @@ def _write_json(path: Path, data: Any) -> None:
             os.chmod(tmp, existing_mode)
         os.replace(tmp, path)
     except Exception:
-        try:
+        try:  # noqa: SIM105 -- nested cleanup; the outer raise dominates the control flow
             os.unlink(tmp)
         except OSError:
             pass
@@ -197,7 +195,7 @@ def _file_lock(lock_path: Path) -> Generator[None, None, None]:
     Uses fcntl on Unix; no-ops gracefully on platforms without fcntl.
     Cleans up the lock file after release.
     """
-    lock_file = open(lock_path, "w")
+    lock_file = open(lock_path, "w")  # noqa: SIM115 -- file handle's lifetime spans yield; cannot use `with`
     try:
         if fcntl:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
@@ -206,7 +204,7 @@ def _file_lock(lock_path: Path) -> Generator[None, None, None]:
         if fcntl:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
         lock_file.close()
-        try:
+        try:  # noqa: SIM105 -- contextlib.suppress shadows the lock cleanup intent; explicit try/except reads clearer here
             lock_path.unlink()
         except OSError:
             pass
@@ -219,7 +217,7 @@ def _append_event(mission_dir: Path, event: dict) -> int:
 
     with _file_lock(lock_path):
         log = _read_json(log_path)
-        new_events = list(log.get("events", [])) + [event]
+        new_events = [*list(log.get("events", [])), event]
         new_log = {**log, "events": new_events}
         _write_json(log_path, new_log)
         return len(new_events) - 1
@@ -238,7 +236,7 @@ def _append_estimate_outcome(mission_dir: Path, outcome: dict) -> None:
         existing = _read_json_optional(outcomes_path)
         if existing is None:
             existing = {"version": 1, "outcomes": []}
-        new_outcomes = list(existing.get("outcomes", [])) + [outcome]
+        new_outcomes = [*list(existing.get("outcomes", [])), outcome]
         new_doc = {**existing, "version": 1, "outcomes": new_outcomes}
         _write_json(outcomes_path, new_doc)
 
