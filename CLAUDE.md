@@ -24,11 +24,13 @@ fast feedback about whether your changes are maintainable.
   committing.
 - **Tests** — run separately per directory because each has its own
   `conftest.py`:
+
   ```
   pytest skills/nelson/scripts/ -v
   pytest hooks/ -v
   pytest scripts/ -v
   ```
+
 - **Pre-commit** — `pre-commit run --all-files`. Includes secret scanning
   (Gitleaks), Ruff, and standard hygiene. Install once with
   `pre-commit install`. If a hook fails, fix the underlying issue rather
