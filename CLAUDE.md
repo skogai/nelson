@@ -70,9 +70,11 @@ lint to stop yelling*.
 
 The largest functions carry `# noqa: C901, PLR0912, PLR0915` suppressions
 pointing to **beads issue `nelson-e6j`**. When you touch one of those
-functions, remove the noqa and verify the limit is met; refactor if not.
-Don't bulk-refactor (the over-engineering risk is real) — fix
-opportunistically.
+functions, check whether your edit reduces complexity below the
+threshold. If yes, drop the noqa. If no, leave the noqa and the backlog
+entry in place — the refactor stays opportunistic, not blocking. The
+goal is to avoid the perverse incentive to leave flagged functions
+untouched.
 
 ### When sensors disagree with you
 
