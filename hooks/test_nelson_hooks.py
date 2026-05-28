@@ -593,7 +593,7 @@ class TestSessionInit:
         """Non-Nelson project: no .nelson/ exists, hook is a no-op (allow)."""
         code = _run(
             cmd_session_init,
-            {"transcript_path": "/tmp/x.jsonl"},
+            {"transcript_path": "/tmp/x.jsonl"},  # noqa: S108 -- placeholder JSON value passed to a no-op hook; never written to disk
             cwd=str(tmp_path),
         )
         assert code == 0

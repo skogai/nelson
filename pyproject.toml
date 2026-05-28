@@ -47,9 +47,11 @@ select = [
 ]
 ignore = [
   "PLR2004",  # magic-value-comparison — too noisy in glue code
-  "PLR0913",  # too-many-arguments — covered by max-args (PLR0917); PLR0913
-              # double-counts and fires on dataclasses/argparse handlers
-              # where the signature is shaped by the framework, not the author.
+  # PLR0913 (too-many-arguments) is intentionally NOT ignored globally:
+  # test/conftest fixture helpers are covered via per-file ignore below,
+  # and production violations get a reasoned per-function noqa pointing
+  # at the refactor backlog. Keeping the rule active means it catches
+  # the *next* drift toward unwieldy signatures.
   "SIM108",   # if-else-block-instead-of-if-exp — collapsing to a ternary
               # often hurts readability when one branch is non-trivial.
               # Leave as a stylistic choice rather than a rule.
@@ -77,49 +79,31 @@ max-complexity = 10
 "skills/nelson/scripts/**" = ["T201", "T203", "S101"]
 # Tests legitimately use assert, bare magic values, late imports of the
 # system-under-test, and subprocess calls to the CLI scripts they're testing.
-"test_*.py" = [
+"**/test_*.py" = [
   "S101",      # assert is how pytest expresses test conditions
   "PLR2004",   # magic values are how tests pin expected outputs
   "PLR0915",   # large test bodies cover many assertions per scenario
   "PLR0912",   # branchy test bodies handle multiple scenarios per test
+  "PLR0913",   # test helpers (e.g. _record_outcome, write_handoff) legitimately
+               # take many fixture kwargs by design
   "PLC0415",   # late imports keep modules out of fixture collection scope
-  "S603",      # subprocess on test-controlled inputs is safe
-  "S108",      # /tmp paths in tests are placeholders, not real filesystem writes
+  "S603",      # subprocess argv built from sys.executable + repo-internal Paths
+               # is safe — this is NOT a license for `python -c` with f-string
+               # interpolation of fixture-derived values; use env= injection instead
   "E402",      # tests deliberately import after sys.path setup
 ]
-"conftest.py" = ["S101", "S603", "PLC0415"]
-# Throwaway regex scratch files at repo root (flagged in nelson-vov for removal).
-"test_regex*.py" = ["T201", "S101", "F541"]
+"conftest.py" = [
+  "S101",
+  "S603",
+  "PLC0415",
+  "PLR0913",   # fixture builders (add_task, record_estimate_outcome,
+               # create_completed_mission) take many kwargs by design
+]
 
 [tool.ruff.format]
 docstring-code-format = true
 
-# ---------------------------------------------------------------------------
-# Type checker — lenient baseline.
-#
-# A strict mypy run on this repo would produce hundreds of violations and
-# drown out the linter signal. Start non-strict; tighten incrementally as
-# typed surface area grows. See follow-up beads issue for the strict-mode
-# roadmap.
-# ---------------------------------------------------------------------------
-
-[tool.mypy]
-python_version = "3.12"
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_unreachable = true
-# Deliberately NOT enabled yet (tighten over time):
-#   strict = true
-#   disallow_untyped_defs = true
-#   disallow_any_generics = true
-ignore_missing_imports = true
-exclude = [
-  "\\.venv",
-  "\\.claude/worktrees",
-  "demos",
-  "docs/superpowers",
-]
+# mypy: roll-out tracked under nelson-8q8
 
 # ---------------------------------------------------------------------------
 # Tests + coverage.

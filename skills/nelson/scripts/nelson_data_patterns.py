@@ -819,7 +819,7 @@ def _save_dismissed(path: Path, dismissed: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def detect_candidate_orders(
+def detect_candidate_orders(  # noqa: PLR0913 -- public API; kwargs are CLI knobs (thresholds + max_candidates + injected FM client) with defaults. A DetectionConfig dataclass is the right refactor and is tracked in nelson-e6j.
     memory_dir: Path,
     *,
     standing_orders_dir: Path | None = None,

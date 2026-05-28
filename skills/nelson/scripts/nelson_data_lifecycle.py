@@ -106,7 +106,7 @@ BATTLE_PLAN_MD_REQUIRED_PHASES: frozenset[str] = frozenset({"BATTLE_PLAN", "FORM
 # ---------------------------------------------------------------------------
 
 
-def _do_init(
+def _do_init(  # noqa: PLR0913 -- args mirror the sailing-orders.json schema; collapsing them into a config dict would obscure the contract. Refactor (e.g. SailingOrders dataclass) tracked in nelson-e6j.
     outcome: str,
     metric: str,
     deadline: str,
@@ -1162,7 +1162,7 @@ def _parse_captain_specs(specs: list[str]) -> list[dict[str, Any]]:
     return captains
 
 
-def _register_squadron(
+def _register_squadron(  # noqa: PLR0913 -- args are shaped by the squadron-registration CLI surface (admiral + admiral_model + captains + mode + optional red-cell pair); merging admiral/red-cell into dicts would just move the same kwargs to the caller.
     mission_dir: Path,
     admiral: str,
     admiral_model: str,
@@ -1248,7 +1248,7 @@ def _register_squadron(
     _write_json(fs_path, new_fleet_status)
 
 
-def _build_task_record(
+def _build_task_record(  # noqa: PLR0913 -- params mirror the task record schema 1:1 (id, name, owner, deliverable, deps, station_tier, files, …); a TaskRecord dataclass is the right refactor and is tracked in nelson-e6j.
     task_id: int,
     name: str,
     owner: str,
