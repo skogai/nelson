@@ -7,6 +7,7 @@ and memory store operations (patterns, standing order stats).
 from __future__ import annotations
 
 import json
+import os
 import stat
 import subprocess
 import sys
@@ -20,6 +21,17 @@ from conftest import (
     init_mission,
     read_json,
     run,
+)
+
+# Subprocess body used by the _write_json crash-cleanup tests below.
+# Reads paths via the environment so the argv stays fully literal (no
+# fixture-derived interpolation into a `python -c` script).
+_WRITE_JSON_PROBE = (
+    "import os, sys;"
+    "sys.path.insert(0, os.environ['SCRIPT_DIR']);"
+    "from pathlib import Path;"
+    "from nelson_data_utils import _write_json;"
+    "_write_json(Path(os.environ['TARGET']), {'version': 2})"
 )
 
 # ---------------------------------------------------------------------------
@@ -49,16 +61,12 @@ class TestWriteJsonCrashCleanup:
             # failure because _write_json cannot write the tmp file
             # inside the read-only directory.
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    (
-                        f"import sys; sys.path.insert(0, '{SCRIPT.parent}');"
-                        "from pathlib import Path;"
-                        "from nelson_data_utils import _write_json;"
-                        f"_write_json(Path('{locked_target}'), {{'version': 2}})"
-                    ),
-                ],
+                [sys.executable, "-c", _WRITE_JSON_PROBE],
+                env={
+                    **os.environ,
+                    "SCRIPT_DIR": str(SCRIPT.parent),
+                    "TARGET": str(locked_target),
+                },
                 capture_output=True,
                 text=True,
                 check=False,
@@ -85,16 +93,12 @@ class TestWriteJsonCrashCleanup:
         sub.chmod(stat.S_IRUSR | stat.S_IXUSR)
         try:
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    (
-                        f"import sys; sys.path.insert(0, '{SCRIPT.parent}');"
-                        "from pathlib import Path;"
-                        "from nelson_data_utils import _write_json;"
-                        f"_write_json(Path('{target}'), {{'v': 1}})"
-                    ),
-                ],
+                [sys.executable, "-c", _WRITE_JSON_PROBE],
+                env={
+                    **os.environ,
+                    "SCRIPT_DIR": str(SCRIPT.parent),
+                    "TARGET": str(target),
+                },
                 capture_output=True,
                 text=True,
                 check=False,

@@ -649,8 +649,8 @@ def _clear_idle_tracker(mission_dir: Path, ship_name: str) -> None:
     """Best-effort: clear the idle tracker entry for a completed ship."""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "nelson" / "scripts"))
-        from nelson_circuit_breakers import (  # noqa: PLC0415 -- sibling-package import after sys.path mutation
-            clear_idle_tracker,  # type: ignore[import-not-found]
+        from nelson_circuit_breakers import (  # type: ignore[import-not-found]  # noqa: PLC0415 -- sibling-package import after sys.path mutation (same pattern as the earlier import on line 625)
+            clear_idle_tracker,
         )
     except ImportError:
         return
