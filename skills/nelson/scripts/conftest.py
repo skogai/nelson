@@ -87,9 +87,10 @@ def add_task(
     owner: str = "HMS Argyll",
     deps: str = "",
     station_tier: int = 0,
+    task_type: str | None = None,
 ) -> None:
     """Add a task to the battle plan."""
-    run(
+    args = [
         "task",
         "--mission-dir",
         str(mission_dir),
@@ -107,7 +108,10 @@ def add_task(
         str(station_tier),
         "--files",
         "",
-    )
+    ]
+    if task_type:
+        args.extend(["--task-type", task_type])
+    run(*args)
 
 
 def read_json(path: Path) -> dict:
@@ -161,6 +165,31 @@ def record_estimate_outcome(
         "--recorded-by",
         recorded_by,
     )
+
+
+def record_admiralty_decision(
+    mission_dir: Path,
+    *,
+    task_id: int = 1,
+    decision_type: str = "approved",
+    notes: str = "",
+    recorded_by: str = "Admiral Test",
+) -> None:
+    """Record an admiralty decision via the CLI."""
+    args = [
+        "admiralty-decision",
+        "--mission-dir",
+        str(mission_dir),
+        "--task-id",
+        str(task_id),
+        "--decision-type",
+        decision_type,
+        "--recorded-by",
+        recorded_by,
+    ]
+    if notes:
+        args.extend(["--notes", notes])
+    run(*args)
 
 
 def create_completed_mission(
