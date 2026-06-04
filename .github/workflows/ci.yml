@@ -58,6 +58,9 @@ jobs:
       - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for org-owned repos; the action reads it from env, not
+          # automatically from the secret store. Set as an Aspegio org secret.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           # Pin engine to match .pre-commit-config.yaml so local + CI agree.
           GITLEAKS_VERSION: "8.30.0"
 
