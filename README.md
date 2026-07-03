@@ -61,7 +61,7 @@ Nelson gives Claude an eight-step operational framework for tackling complex mis
 1. **Sailing Orders** — Define the outcome, success metric, constraints, and stop criteria
 2. **The Estimate** — Conduct the 7 Question Maritime Tactical Estimate: reconnaissance, intent, effects, terrain, forces, coordination, and control
 3. **Battle Plan** — Turn approved effects into task assignments with owners, dependencies, and file ownership
-4. **Form the Squadron** — Choose an execution mode (single-session, subagents, or agent team) and size the team
+4. **Form the Squadron** — Choose an execution mode (single-session, subagents, agent team, workflow, or hybrid workflow) and size the team
 5. **Get Permission to Sail** — Present the plan for user approval before committing resources
 6. **Quarterdeck Rhythm** — Run checkpoints to track progress, identify blockers, monitor hull integrity, and manage budget
 7. **Action Stations** — Classify tasks by risk tier and enforce verification before marking complete
@@ -103,13 +103,25 @@ If you need fast parallel execution with minimal ceremony, [OmO](https://github.
 
 ### Execution modes
 
-The skill selects one of three execution modes based on your mission:
+The skill selects one of five execution modes based on your mission:
 
 | Mode | When to use | How it works |
 |------|------------|--------------|
 | `single-session` | Sequential tasks, low complexity, heavy same-file editing | Claude works through tasks in order within one session |
 | `subagents` | Parallel tasks where workers only report back to the coordinator | Claude spawns [subagents](https://code.claude.com/docs/en/sub-agents) that work independently and return results |
 | `agent-team` | Parallel tasks where workers need to coordinate with each other | Claude creates an [agent team](https://code.claude.com/docs/en/agent-teams) with direct teammate-to-teammate communication |
+| `workflow` | Large fan-out audits, repeatable migrations, codebase-wide analysis, or cross-checked research | Nelson writes a Workflow Charter and verification contract for one approved [dynamic workflow](https://code.claude.com/docs/en/workflows) run |
+| `hybrid-workflow` | Workflow-suitable missions that need probes, Station 2/3 controls, or human approval between stages | Nelson gates a sequence of separate workflow runs, reviewing telemetry and outputs before the next stage |
+
+### Dynamic workflows and ultracode
+
+Claude Code dynamic workflows move orchestration into workflow scripts that can fan out to many agents, keep intermediate results in script state, and aggregate broad review or migration results. Nelson does not replace that mechanism. Nelson wraps it with doctrine: Sounding-the-Channel probes, explicit permission gates, cost guardrails, audit logs, and verification contracts before findings or edits are accepted.
+
+`ultracode` is treated as a Claude Code `xhigh` effort/automation setting, not a Nelson execution mode. If ultracode or the user chooses a workflow, Nelson still supplies the mission charter, risk tiering, human gates, telemetry expectations, and fallback mode.
+
+### Standing goals
+
+For long autonomous, headless, or scheduled runs, Nelson aligns with Claude Code's [`/goal`](https://code.claude.com/docs/en/goal) — a session-scoped Stop hook that keeps the session from stopping until a completion condition is met. Nelson composes the condition from the sailing orders (`nelson-data.py goal-condition`) so it stays tied to the mission's outcome, metric, and stop criteria, and phrases it against what the goal evaluator can actually see: the conversation transcript. The standing goal and Nelson's Mission Complete Gate reinforce each other — the gate is the discipline the admiral applies, the goal is the harness backstop that enforces it. See `references/goal-alignment.md`.
 
 ### Chain of command
 
@@ -379,7 +391,7 @@ Nelson is a Claude Code skill — it loads automatically when your request match
 
 ### Let Nelson pick the execution mode
 
-Nelson selects the best execution mode (single-session, subagents, or agent team) based on your mission:
+Nelson selects the best execution mode (single-session, subagents, agent team, workflow, or hybrid workflow) based on your mission:
 
 ```
 Use Nelson to migrate the payment processing module from Stripe v2 to v3
@@ -443,9 +455,11 @@ skills/nelson/
 │   ├── admiralty-templates/      # 11 structured templates
 │   ├── crew-roles.md             # Crew role definitions & ship names
 │   ├── damage-control/           # 11 recovery procedures
+│   ├── goal-alignment.md         # Claude Code /goal (standing goal) doctrine
 │   ├── standing-orders/          # 16 anti-pattern guards
 │   ├── the-estimate.md           # 7 Question Maritime Tactical Estimate reference
-│   └── squadron-composition.md   # Mode selection & team sizing
+│   ├── squadron-composition.md   # Mode selection & team sizing
+│   └── workflow-doctrine.md      # Dynamic workflow & ultracode doctrine
 └── scripts/              # nelson-data.py, conflict scan, circuit breakers, tests
 ```
 
@@ -479,6 +493,7 @@ skills/nelson/
 │   │   └── turnover-brief.md
 │   ├── commendations.md                       # Recognition signals and correction guidance
 │   ├── crew-roles.md                         # Crew role definitions, ship names, sizing
+│   ├── goal-alignment.md                     # Claude Code /goal (standing goal) doctrine
 │   ├── damage-control/                       # Individual procedure files
 │   │   ├── circuit-breakers.md
 │   │   ├── comms-failure.md
@@ -497,6 +512,7 @@ skills/nelson/
 │   ├── structured-data.md                    # Structured fleet data capture reference
 │   ├── the-estimate.md                       # 7 Question Maritime Tactical Estimate reference
 │   ├── tool-mapping.md                       # Nelson-to-Claude Code tool reference
+│   ├── workflow-doctrine.md                  # Dynamic workflow and ultracode doctrine
 │   └── standing-orders/                      # Individual anti-pattern files
 │       ├── admiral-at-the-helm.md
 │       ├── all-hands-on-deck.md
@@ -519,6 +535,7 @@ skills/nelson/
     ├── nelson_data_utils.py                  # Shared I/O, validation, constants
     ├── nelson_data_memory.py                 # Cross-mission memory store (v2.0.0)
     ├── nelson_data_lifecycle.py              # Mission lifecycle commands
+    ├── nelson_data_goal.py                   # Composes a Claude Code /goal condition
     ├── nelson_data_fleet.py                  # Fleet intelligence & analytics
     ├── nelson_conflict_scan.py               # Pre-flight split-keel scanner
     ├── nelson_conflict_radar.py              # Runtime file-conflict monitor
@@ -568,11 +585,11 @@ Nelson writes two kinds of artifacts side by side: **prose** for humans (captain
 
 ### Platform support
 
-Nelson requires **agent-team coordination primitives** — shared task lists, peer messaging between agents, and team lifecycle management. These are the foundation of Nelson's squadron model: captains coordinating in parallel, the admiral running quarterdeck checkpoints, and damage control procedures that depend on live communication between agents.
+Nelson is built around **Claude Code orchestration primitives** — shared task lists, peer messaging between agents, subagents, and dynamic workflows. These are the foundation of Nelson's squadron model: captains coordinating in parallel, the admiral running quarterdeck checkpoints, and damage control procedures that keep modern Claude Code orchestration auditable.
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| **Claude Code** | Supported | Full support for all three execution modes (single-session, subagents, agent-team) |
+| **Claude Code** | Supported | Full support for all five execution modes (single-session, subagents, agent-team, workflow, hybrid-workflow) |
 | **Cursor** | Experimental | See installation instructions above |
 | **Codex CLI** | Not yet supported | Lacks agent-team primitives. [Agents SDK](https://openai.github.io/openai-agents-python/) orchestration may provide a path — monitoring |
 | **OpenCode** | Not yet supported | Agent-team feature exists on dev branch but has not reached stable release |

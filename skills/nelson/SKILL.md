@@ -37,7 +37,7 @@ Out of scope: Migration script for existing sessions
 
 **Establish Mission Directory:**
 - **New session:** Run `nelson-data.py init` (see "Structured Data Capture" below). The script owns directory creation: it generates an 8-character hex SESSION_ID, creates `.nelson/missions/{YYYY-MM-DD_HHMMSS}_{SESSION_ID}/` with the `damage-reports/` and `turnover-briefs/` subdirectories, writes `sailing-orders.json`, `mission-log.json`, and `fleet-status.json`, writes `.nelson/.active-{SESSION_ID}` as the session marker, and prints the mission directory path to stdout. Capture that path as `{mission-dir}` for the remainder of this mission. The SESSION_ID is the segment after the last underscore in the directory name. If you need a specific SESSION_ID (e.g., testing or resuming a known id), pass `--session-id <8-hex>`.
-- **Resumed session:** First, attempt auto-recovery by running `python3 .claude/skills/nelson/scripts/nelson-data.py recover --missions-dir .nelson/missions`. If this finds an active mission with handoff packets, use the structured recovery briefing to resume directly. Otherwise, if you know the SESSION_ID, read `.nelson/.active-{SESSION_ID}` to recover the mission path. Set that path as `{mission-dir}`. If you cannot determine your SESSION_ID (e.g., after a full restart), list `.nelson/missions/` and present the options to the user for selection. Set the chosen directory as `{mission-dir}`. Recover state per `references/damage-control/session-resumption.md` (prefer JSON files, fall back to quarterdeck report prose).
+- **Resumed session:** First, attempt auto-recovery by running `python3 .claude/skills/nelson/scripts/nelson-data.py recover --missions-dir .nelson/missions`. If this finds an active mission with handoff packets, use the structured recovery briefing to resume directly. Otherwise, if you know the SESSION_ID, read `.nelson/.active-{SESSION_ID}` to recover the mission path. Set that path as `{mission-dir}`. If you cannot determine your SESSION_ID (e.g., after a full restart), list `.nelson/missions/` and present the options to the user for selection. Set the chosen directory as `{mission-dir}`. Recover state per `references/damage-control/session-resumption.md` (prefer JSON files, fall back to quarterdeck report prose). **Re-establish the standing goal:** a `/goal` is restored automatically on `--resume`/`--continue` but not in a fresh session, so if none is active (check with a bare `/goal`) and `sailing-orders.json` carries a recorded `goal_condition`, re-issue it per `references/goal-alignment.md`.
 
 All mission artifacts — captain's log, quarterdeck reports, damage reports, and turnover briefs — are written inside `{mission-dir}`.
 
@@ -50,6 +50,15 @@ python3 .claude/skills/nelson/scripts/nelson-phase.py advance --mission-dir {mis
 ```
 
 **Session Hygiene:** Execute session hygiene per `references/damage-control/session-hygiene.md`. Skip this step when resuming an interrupted session.
+
+**Standing Goal (optional):** For long autonomous, headless (`-p`), scheduled, or ultracode missions — where standing down too early is the failure mode — offer to set a Claude Code `/goal` that keeps the session from stopping until the mission is genuinely complete. Compose it from the sailing orders rather than by hand:
+
+```bash
+python3 .claude/skills/nelson/scripts/nelson-data.py goal-condition \
+  --mission-dir {mission-dir} --record
+```
+
+Present the printed `/goal ...` line for the user to set. If the user already set a `/goal` before invoking Nelson, do NOT replace it — read it back with a bare `/goal`, reconcile the sailing orders to it, and only re-issue a composed goal with the user's agreement. Skip this for short interactive missions where the human is steering turn by turn. You MUST read `references/goal-alignment.md` before setting a goal — the evaluator judges the condition against the conversation transcript only, so completion evidence must be surfaced into chat (this shapes Stand Down in Step 8).
 
 **The Estimate opt-in:** Before proceeding, ask the user:
 
@@ -111,6 +120,8 @@ When The Estimate has been conducted, the Battle Plan inherits the analytical wo
 
 Reference `references/admiralty-templates/battle-plan.md` for the schema of each captain's brief and `references/admiralty-templates/ship-manifest.md` for the ship manifest.
 
+**Workflow Suitability Check:** If the mission has large fan-out, repeatable orchestration, codebase-wide analysis, broad migrations, audits, or cross-checking needs, you MUST read `references/workflow-doctrine.md` and decide whether `workflow` or `hybrid-workflow` is appropriate. For workflow modes, add a compact Workflow Charter to the battle plan with execution primitive, suitability, phases, human gates, verification contract, cost guardrail, and fallback mode. For non-workflow modes, include one line: `Workflow suitability: not selected because ...`. Station 2/3 workflow work should default to `hybrid-workflow` because human approval belongs between separate workflow runs, not inside one arbitrary mid-run pause.
+
 **Battle Plan Gate — Standing Order Check:** You MUST NOT finalize task assignments until each question below is answered in writing and any triggered standing order remedy has been applied. Show your reasoning — a bare yes/no is not sufficient.
 - `becalmed-fleet.md`: Should this mission use single-session instead of multi-agent? If yes, skip Step 4 — single-session has no squadron to form.
 - `light-squadron.md`: Is the task count equal to the number of independent work units, or have tasks been under-split?
@@ -137,13 +148,17 @@ If any answer triggers a standing order, you MUST apply the corrective action an
     - `single-session`: sequential tasks, low complexity, or heavy same-file editing.
     - `subagents`: parallel, fully independent tasks that report only to the admiral.
     - `agent-team`: captains benefit from a shared task list, peer messaging, or coordinated deliverables; or 4+ captains are needed.
+    - `workflow`: one autonomous dynamic workflow run for large fan-out, repeatable review, broad migration, audit, or cross-checked research.
+    - `hybrid-workflow`: Nelson-gated sequence of workflow stages with human approval between stages.
 
 **Mode-Tool Consistency Gate:** Before assigning ships, confirm your tool usage matches the selected mode by reviewing `references/tool-mapping.md`:
 - **`subagents` mode:** Captains do NOT use `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, or `SendMessage(type="message")`. Captains report via the `Agent` tool return value only. The admiral uses `TaskCreate`/`TaskUpdate`/`TaskList` to track progress in the session task list (visibility only — captains cannot see these tasks).
 - **`agent-team` mode:** Do NOT use `Agent` with `subagent_type` to spawn captains (marines still use `subagent_type`). Use `TeamCreate` first, then `Agent` with `team_name` + `name`. Coordinate via `TaskList` and `SendMessage`.
 - **`single-session` mode:** The admiral uses `TaskCreate`, `TaskUpdate`, `TaskList`, and `TaskGet` to track progress as it completes each task sequentially.
+- **`workflow` mode:** Treat the workflow as a fleet asset, not ordinary captains. Nelson v1 produces a Workflow Charter/prompt and telemetry plan; it does not directly invoke a workflow API or generate runnable `.claude/workflows/*.js`.
+- **`hybrid-workflow` mode:** Treat each workflow stage as a separate fleet asset. Stop at the planned gate, present results, and launch the next workflow run only after explicit approval.
 
-**Task List Visibility:** After selecting the execution mode, create a `TaskCreate` entry for each battle plan task to make mission progress visible in the Claude Code task list (Ctrl+T). This applies in **all execution modes** — it is admiral-level visibility tracking, not inter-agent coordination.
+**Task List Visibility:** After selecting the execution mode, create a `TaskCreate` entry for each battle plan task to make mission progress visible in the Claude Code task list (Ctrl+T). This applies in **all execution modes** — it is admiral-level visibility tracking, not inter-agent coordination. In `workflow` and `hybrid-workflow`, also create visibility entries for workflow phases or gates when they are the operational units being tracked.
 
 For each task:
 - `subject`: Task name from the battle plan (imperative form, e.g., "Refactor auth module")
@@ -160,7 +175,7 @@ All tasks start as `pending`. They will be updated with owners and status as the
 ```
 SQUADRON FORMATION ORDERS
 
-Mode: [single-session | subagents | agent-team]
+Mode: [single-session | subagents | agent-team | workflow | hybrid-workflow]
 Captain count: [N]
 
 Ships:
@@ -169,6 +184,19 @@ Ships:
   [repeat for each ship]
 
 [Red-cell navigator — HMS X, if present]
+```
+
+For `workflow` and `hybrid-workflow`, include:
+
+```
+WORKFLOW CHARTER
+Execution primitive: [workflow | hybrid-workflow]
+Suitability: [why dynamic workflow orchestration is justified]
+Phases: [probe / full run / stage names]
+Human gates: [approval points, especially for hybrid-workflow]
+Verification contract: [how accepted, rejected, and uncertain findings are handled]
+Cost guardrail: [Sounding-the-Channel probe, scope cap, token/time stop]
+Fallback mode: [agent-team | single-session]
 ```
 
 If any tasks are marked `admiralty-action-required: yes`, append before awaiting approval:
@@ -184,7 +212,7 @@ ADMIRALTY ACTION LIST — Actions required from Admiralty
 Actions marked `timing: before task starts` require your sign-off before the relevant captain is spawned.
 ```
 
-Do not spawn any agents or create any tasks until the user approves. If the user requests changes, revise and redisplay before proceeding.
+Do not spawn any agents, create any tasks, or launch any `workflow` / `hybrid-workflow` run until the user approves. If the user requests changes, revise and redisplay before proceeding.
 
 > **Note:** For headless and CI invocation, use `nelson-data.py headless --auto-approve` which combines Steps 1-3 and skips the interactive approval gate. See `references/structured-data.md` for details.
 
@@ -217,6 +245,8 @@ This registers all tasks, records the squadron, computes DAG metrics, and runs t
 - **`agent-team` mode:** Use `TaskUpdate` to set `owner` to each captain's name and `status` to `in_progress` as captains are spawned. The team's shared task list now serves both visibility and coordination.
 - **`subagents` mode:** Use `TaskUpdate` to set `status` to `in_progress` as each captain is dispatched. The admiral tracks these directly.
 - **`single-session` mode:** Use `TaskUpdate` to set `status` to `in_progress` as the admiral begins each task.
+- **`workflow` mode:** Use `TaskUpdate` to mark the workflow run or phase as `in_progress`, and log `workflow_run_started`.
+- **`hybrid-workflow` mode:** Use `TaskUpdate` to mark only the currently approved workflow stage as `in_progress`; later stages remain `pending` until their human gate is passed.
 
 **Edit permissions:** When spawning any agent whose task involves editing files, set `mode: "acceptEdits"` on the `Agent` tool call. Omitting this can cause a permission race condition that silently stalls the agent at its first edit. When in doubt, include it.
 
@@ -227,7 +257,8 @@ This registers all tasks, records the squadron, computes DAG metrics, and runs t
 **Display and Permission Gate:**
 1. Display the complete battle plan to the user if `becalmed-fleet.md` is in effect.
 2. Display the complete squadron formation to the user if `becalmed-fleet.md` is not in effect. The battle plan (drafted in Step 3) should also be available for review.
-3. You are REQUIRED to wait for explicit permission to proceed.
+3. If `workflow` or `hybrid-workflow` is selected, display the Workflow Charter, verification contract, cost guardrail, fallback mode, and next human gate.
+4. You are REQUIRED to wait for explicit permission to proceed. Workflow and hybrid-workflow modes require explicit approval before every launch; for `hybrid-workflow`, repeat this gate between stages.
 
 **Phase Advance:** After the user grants permission, log the event and advance:
 
@@ -262,6 +293,7 @@ If the task is complete and no pending task depends on it, proceed to shutdown p
     - Check for active marine deployments; verify marines have returned and outputs are incorporated.
     - Safety net: if any idle ship with a complete task was missed between checkpoints, apply the `references/standing-orders/paid-off.md` shutdown procedure now before continuing.
     - Track burn against token/time budget.
+    - For `workflow` and `hybrid-workflow`, record workflow telemetry when available: phase, agents complete/total, token burn, elapsed time, failed agents, accepted findings, rejected findings, uncertain findings, and next gate. Use `workflow_probe_completed`, `workflow_run_completed`, or `workflow_run_stopped` events as appropriate.
     - Check hull integrity: collect damage reports from all ships, update the squadron readiness board, and take action per `references/damage-control/hull-integrity.md`. The admiral must also check its own hull integrity at each checkpoint. **Every ship must file a damage report at every checkpoint** to `{mission-dir}/damage-reports/{ship-name}.json` using the schema in `references/admiralty-templates/damage-report.md` — do not skip this when hull is Green.
     - Standing order scan: For each order below, ask "Has this situation arisen since the last checkpoint?" If yes, apply the corrective action now — do not defer.
         - `admiral-at-the-helm.md`: Has the admiral drifted into implementation work (excluding permitted read-only recombination)?
@@ -299,6 +331,7 @@ Reference `references/tool-mapping.md` for coordination tools, `references/admir
     - Test or validation output.
     - Failure modes and rollback notes.
     - Red-cell review for medium+ station tiers.
+- For `workflow` and `hybrid-workflow`, require the battle plan's verification contract before accepting workflow outputs. Accepted findings need the promised evidence, rejected or uncertain findings must be surfaced separately, and Station 2+ outputs still require adversarial review or human confirmation per `references/action-stations.md`.
 - Trigger quality checks on:
     - Task completion.
     - Agent idle with unverified outputs.
@@ -328,6 +361,8 @@ Reference `references/admiralty-templates/captains-log.md` for the captain's log
 **Session State Cleanup:** Remove the session state file by deleting `.nelson/.active-{SESSION_ID}`.
 
 **Mission Complete Gate:** You MUST NOT declare the mission complete until `{mission-dir}/captains-log.md` exists on disk and has been confirmed readable. If context pressure is high, write a minimal log noting which sections were abbreviated — but the file must exist. Skipping Step 8 is never permitted.
+
+**Clear the Standing Goal:** If a `/goal` is active, its evaluator only sees this conversation — so state the completion evidence in chat for the goal to auto-clear: the success metric result (matching the sailing orders' metric), that `captains-log.md` was written (with its path), and that stand-down was recorded. Do NOT tell the user to run `/goal clear` on a successful mission — the goal clears itself once this evidence is visible. Only if the mission was abandoned: run `scuttle-and-reform`, state the blocking reason in chat, and log a `goal_cleared` event via `nelson-data.py event`. See `references/goal-alignment.md`.
 
 **GitHub Star Prompt (one-time, success only):** After the Mission Complete Gate passes, ask the user once whether they would like to star the Nelson repo (canonical slug `harrymunro/nelson`). Run all three preflight checks below; if any prints `SKIP`, skip the prompt silently and finish Stand Down.
 
