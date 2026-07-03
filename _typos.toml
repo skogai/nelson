@@ -5,4 +5,4 @@ despatches = "despatches"
 fo = "fo"
 
 [files]
-extend-exclude = [".venv/", "demos/", "*.jpg", "*.png"]
+extend-exclude = [".venv/", "demos/", ".skogai/experiments/", "*.jpg", "*.png"]
