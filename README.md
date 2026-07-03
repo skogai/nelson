@@ -5,9 +5,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
 [![Stars](https://img.shields.io/github/stars/harrymunro/nelson)](https://github.com/harrymunro/nelson/stargazers)
 
-**Squadron-scale agent coordination for Claude Code.**
-
-A Claude Code skill that organises multi-agent work into structured naval operations: sailing orders define the mission, captains command parallel workstreams, action stations enforce risk-appropriate controls, and a captain's log makes every decision contribute to lessons learned.
+**If you believe that what works well for people works well for agents, there's few finer examples of organisational tradition than the Royal Navy to base the rules on. This framework does just that, for Claude Code.**
 
 <!-- markdownlint-disable-next-line MD036 -->
 *4 risk tiers · 11 damage control procedures · 11 mission templates · 7 crew roles · 16 standing orders*
