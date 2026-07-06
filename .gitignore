@@ -5,8 +5,6 @@ __pycache__/
 .DS_Store
 CLAUDE.local.md
 AGENTS.local.md
-.claude/skills/nelson
-.nelson/
 .beans.yml
 .beans/
 .beads/
