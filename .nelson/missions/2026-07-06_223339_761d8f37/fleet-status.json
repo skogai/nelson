@@ -3,7 +3,7 @@
   "mission": {
     "outcome": "Add repository-target support so Nelson missions can run ships against external repositories cloned as gh repo clone skogai/<repo> /tmp/nelson/<repo>.",
     "status": "forming",
-    "phase": "ESTIMATE",
+    "phase": "BATTLE_PLAN",
     "started_at": "2026-07-06T22:33:39Z",
     "checkpoint_number": 0
   },
@@ -25,5 +25,5 @@
   "recent_events": [
     "Mission initialized"
   ],
-  "last_updated": "2026-07-06T22:33:46Z"
+  "last_updated": "2026-07-06T23:52:52Z"
 }
