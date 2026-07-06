@@ -16,3 +16,4 @@ AGENTS.local.md
 *.db
 .beads-credential-key
 docs/superpowers/
+/.claude/data/sessions
