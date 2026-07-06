@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-07-06T22:33:46Z",
+      "data": {
+        "from_phase": "SAILING_ORDERS",
+        "to_phase": "ESTIMATE"
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-07-06T23:52:52Z",
+      "data": {
+        "from_phase": "ESTIMATE",
+        "to_phase": "BATTLE_PLAN"
+      }
+    }
+  ]
+}

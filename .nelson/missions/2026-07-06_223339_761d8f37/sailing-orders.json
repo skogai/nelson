@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "outcome": "Add repository-target support so Nelson missions can run ships against external repositories cloned as gh repo clone skogai/<repo> /tmp/nelson/<repo>.",
+  "success_metric": "Tests and documentation demonstrate that a mission can record and use an external repo target without losing Nelson mission artifacts or existing local-repo behavior.",
+  "deadline": "this session",
+  "budget": {
+    "token_limit": null,
+    "time_limit_minutes": null
+  },
+  "constraints": [
+    "Prefer existing Nelson mission-data and hook patterns.",
+    "Do not perform network clones without explicit approval.",
+    "Keep backwards compatibility for existing missions."
+  ],
+  "out_of_scope": [
+    "Building a full remote execution service.",
+    "Changing GitHub authentication setup."
+  ],
+  "stop_criteria": [
+    "Implementation, focused tests, and docs are updated and verified."
+  ],
+  "handoff_artifacts": [
+    "Changed files summary, verification commands, Nelson mission artifacts."
+  ],
+  "circuit_breakers": {},
+  "created_at": "2026-07-06T22:33:39Z"
+}

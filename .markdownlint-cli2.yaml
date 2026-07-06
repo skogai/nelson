@@ -13,3 +13,4 @@ ignores:
   - ".venv/"
   - "demos/"
   - "docs/superpowers/plans/"
+  - ".skogai/experiments/"
