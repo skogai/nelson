@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "mission": {
+    "outcome": "Add repository-target support so Nelson missions can run ships against external repositories cloned as gh repo clone skogai/<repo> /tmp/nelson/<repo>.",
+    "status": "forming",
+    "phase": "ESTIMATE",
+    "started_at": "2026-07-06T22:33:39Z",
+    "checkpoint_number": 0
+  },
+  "progress": {
+    "pending": 0,
+    "in_progress": 0,
+    "completed": 0,
+    "blocked": 0,
+    "total": 0
+  },
+  "budget": {
+    "tokens_spent": 0,
+    "tokens_remaining": null,
+    "pct_consumed": 0.0,
+    "burn_rate_per_checkpoint": 0
+  },
+  "squadron": [],
+  "blockers": [],
+  "recent_events": [
+    "Mission initialized"
+  ],
+  "last_updated": "2026-07-06T22:33:46Z"
+}
