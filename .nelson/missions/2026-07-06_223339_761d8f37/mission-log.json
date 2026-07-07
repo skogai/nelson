@@ -18,6 +18,15 @@
         "from_phase": "ESTIMATE",
         "to_phase": "BATTLE_PLAN"
       }
+    },
+    {
+      "type": "battle_plan_amended",
+      "checkpoint": 0,
+      "timestamp": "2026-07-07T00:12:07Z",
+      "data": {
+        "summary": "Sailing orders amendment v2 added; original v1 preserved.",
+        "rationale": "Reconnaissance and user clarification changed default target mechanism from gh clone under /tmp to wt worktrees from existing local source repositories."
+      }
     }
   ]
 }

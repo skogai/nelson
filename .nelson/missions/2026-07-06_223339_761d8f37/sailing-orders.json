@@ -22,6 +22,29 @@
   "handoff_artifacts": [
     "Changed files summary, verification commands, Nelson mission artifacts."
   ],
+  "amendments": [
+    {
+      "version": 2,
+      "amended_at": "2026-07-07T00:00:00Z",
+      "reason": "Reconnaissance and user clarification reframed the target mechanism from default gh clone under /tmp to provider-created worktrees from existing local source repositories.",
+      "outcome": "Add repository-target support so Nelson missions can run ships in provider-created worktrees from already-existing local source repositories while keeping mission state in one Nelson control repo.",
+      "success_metric": "Tests and documentation demonstrate that a mission can record a target source repo, create or use a wt/existing target worktree on branch nelson/<mission-id>, send ships to that working directory, and preserve existing local-repo behavior.",
+      "constraints_added": [
+        "Use an already-existing local source repository as the default target input.",
+        "Prefer the user's wt provider for worktree creation when available.",
+        "Record the actual provider-created working directory; do not assume one fixed worktree layout."
+      ],
+      "target_repository_contract": {
+        "default_provider": "wt",
+        "fallback_provider": "existing",
+        "branch_template": "nelson/<mission-id>",
+        "source_repo_requirement": "already-existing local repository path",
+        "working_dir_policy": "capture actual provider-created path or accept explicit existing checkout path",
+        "mission_state_policy": "single Nelson control repository under .nelson/missions",
+        "multi_repo_policy": "explicit only; prefer one ship per target repository"
+      }
+    }
+  ],
   "circuit_breakers": {},
   "created_at": "2026-07-06T22:33:39Z"
 }
