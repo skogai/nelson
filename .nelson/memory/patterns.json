@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-02T21:28:40Z",
+  "pattern_count": 1,
+  "patterns": [
+    {
+      "mission_id": "2026-10-02_181703_3d83347e",
+      "completed_at": "2026-10-02T21:28:40Z",
+      "outcome_achieved": true,
+      "planned_outcome": "Produce an ONBOARDING.md for this Nelson fork covering repo layout, plugin surfaces, and current in-flight state, plus a ranked improvement backlog in the captain's log",
+      "adopt": [
+        "Using the live, currently-running mission as its own worked example for documentation \u2014 every claim is independently re-checkable against real files, not invented illustrative JSON.",
+        "Resolving a becalmed-fleet vs admiral-at-the-helm tension by using subagents mode with exactly one captain, rather than defaulting to single-session when the task involves real implementation work."
+      ],
+      "avoid": [
+        "Amending sailing-orders.json by direct edit without a matching nelson-data.py subcommand leaves fleet-status.json's cached mission.outcome field stale.",
+        "nelson-data.py event --type task_completed accepts no per-type data fields in this installed version, despite references/structured-data.md documenting --task-id/--owner/etc.; nelson-phase.py's UNDERWAY exit check requires data.task_id, so the documented CLI usage cannot actually unblock phase advance without a direct JSON edit."
+      ],
+      "standing_order_violations": [],
+      "damage_control_events": 0,
+      "quality": {
+        "violations": 0,
+        "blockers_raised": 0,
+        "blockers_resolved": 0,
+        "task_completion_rate": 1.0
+      }
+    }
+  ]
+}

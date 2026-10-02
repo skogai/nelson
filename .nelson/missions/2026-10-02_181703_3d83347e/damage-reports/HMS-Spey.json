@@ -1,0 +1,12 @@
+{
+  "ship_name": "HMS Spey",
+  "agent_id": "a15f1b4294dece1c7",
+  "timestamp": "2026-10-02T21:25:00Z",
+  "token_count": 143492,
+  "token_limit": 200000,
+  "hull_integrity_pct": 28,
+  "hull_integrity_status": "Critical",
+  "relief_requested": false,
+  "context_summary": "Task completed and reported back before relief was needed — wrote DASHBOARD.md (two sections), reading this mission's and the stale mission's full directories plus README/CONTRIBUTING/AGENTS.md/CLAUDE.md/docs/project_structure.md for overlap-checking, and ran nelson-phase.py/nelson-data.py live to verify quoted output. 34 tool uses for a task planned as Station 0/atomic/0-crew — higher burn than the Estimate anticipated, worth noting for future task sizing rather than acting on now (ship stood down normally, no relief requested).",
+  "report_path": ".nelson/missions/2026-10-02_181703_3d83347e/damage-reports/HMS-Spey.json"
+}

@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T18:17:24Z",
+      "data": {
+        "from_phase": "SAILING_ORDERS",
+        "to_phase": "ESTIMATE"
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:16:27Z",
+      "data": {
+        "from_phase": "ESTIMATE",
+        "to_phase": "BATTLE_PLAN"
+      }
+    },
+    {
+      "type": "squadron_formed",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:17:40Z",
+      "data": {
+        "captain_count": 1,
+        "has_red_cell": false,
+        "execution_mode": "subagents",
+        "standing_order_check": {
+          "triggered": [],
+          "remedies": []
+        }
+      }
+    },
+    {
+      "type": "battle_plan_approved",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:17:40Z",
+      "data": {
+        "task_count": 1,
+        "parallel_tracks": 1,
+        "critical_path_length": 1,
+        "standing_order_check": {
+          "triggered": [],
+          "remedies": []
+        }
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:17:43Z",
+      "data": {
+        "from_phase": "BATTLE_PLAN",
+        "to_phase": "FORMATION"
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:21:40Z",
+      "data": {
+        "from_phase": "FORMATION",
+        "to_phase": "PERMISSION"
+      }
+    },
+    {
+      "type": "permission_granted",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:21:40Z",
+      "data": {}
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-10-02T21:21:41Z",
+      "data": {
+        "from_phase": "PERMISSION",
+        "to_phase": "UNDERWAY"
+      }
+    },
+    {
+      "type": "task_completed",
+      "checkpoint": 1,
+      "timestamp": "2026-10-02T21:26:33Z",
+      "data": {
+        "task_id": 1,
+        "task_name": "Write DASHBOARD.md (state-model explainer + worked-example walkthrough)",
+        "owner": "HMS Spey",
+        "station_tier": 0,
+        "verification": "passed",
+        "_note": "nelson-data.py event --type task_completed does not accept --task-id/--owner/etc. in this installed version (CLI help only lists --type/--checkpoint), unlike the documented interface in references/structured-data.md. This data block was added by direct edit so nelson-phase.py's UNDERWAY exit check (which requires data.task_id) can be satisfied. Logged as a backlog item in captains-log.md."
+      }
+    },
+    {
+      "type": "checkpoint",
+      "checkpoint": 1,
+      "timestamp": "2026-10-02T21:26:37Z",
+      "data": {
+        "progress": {
+          "pending": 0,
+          "in_progress": 0,
+          "completed": 1,
+          "blocked": 0
+        },
+        "budget": {
+          "tokens_spent": 0,
+          "tokens_remaining": 0,
+          "pct_consumed": 0.0,
+          "burn_rate_per_checkpoint": 0
+        },
+        "hull_summary": {
+          "green": 1,
+          "amber": 0,
+          "red": 0,
+          "critical": 0
+        },
+        "blockers": [],
+        "standing_order_violations": [],
+        "admiral_decision": "continue",
+        "admiral_rationale": "Only task complete, all acceptance criteria verified by admiral against real mission files; proceeding to Stand Down."
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 1,
+      "timestamp": "2026-10-02T21:28:29Z",
+      "data": {
+        "from_phase": "UNDERWAY",
+        "to_phase": "STAND_DOWN"
+      }
+    },
+    {
+      "type": "mission_complete",
+      "checkpoint": 2,
+      "timestamp": "2026-10-02T21:28:40Z",
+      "data": {
+        "outcome_achieved": true,
+        "tasks_completed": 1,
+        "tasks_total": 1,
+        "total_tokens_consumed": 0,
+        "budget_pct_consumed": 0.0,
+        "duration_minutes": 191,
+        "ships_used": 1,
+        "reliefs": 0,
+        "standing_order_violations_total": 0
+      }
+    }
+  ]
+}
