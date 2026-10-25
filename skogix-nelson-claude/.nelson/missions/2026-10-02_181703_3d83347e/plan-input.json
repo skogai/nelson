@@ -1,0 +1,20 @@
+{
+  "squadron": {
+    "admiral": { "ship_name": "HMS Victory", "model": "sonnet" },
+    "captains": [
+      { "ship_name": "HMS Spey", "ship_class": "patrol vessel", "model": "sonnet", "task_id": 1 }
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Write DASHBOARD.md (state-model explainer + worked-example walkthrough)",
+      "owner": "HMS Spey",
+      "deliverable": "DASHBOARD.md at repo root covering Estimate Effects 1 and 2",
+      "dependencies": [],
+      "station_tier": 0,
+      "file_ownership": ["DASHBOARD.md"],
+      "modification_targets": []
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "mission": {
+    "outcome": "Produce an ONBOARDING.md for this Nelson fork covering repo layout, plugin surfaces, and current in-flight state, plus a ranked improvement backlog in the captain's log",
+    "status": "complete",
+    "phase": "STAND_DOWN",
+    "started_at": "2026-10-02T18:17:03Z",
+    "checkpoint_number": 2
+  },
+  "progress": {
+    "pending": 0,
+    "in_progress": 0,
+    "completed": 1,
+    "blocked": 0,
+    "total": 1
+  },
+  "budget": {
+    "tokens_spent": 0,
+    "tokens_remaining": 0,
+    "pct_consumed": 0.0,
+    "burn_rate_per_checkpoint": 0,
+    "burn_rate_per_task": null,
+    "projected_budget_at_completion": null
+  },
+  "squadron": [
+    {
+      "ship_name": "HMS Spey",
+      "ship_class": "patrol vessel",
+      "role": "captain",
+      "hull_integrity_pct": 100,
+      "hull_integrity_status": "Green",
+      "relief_requested": false,
+      "task_id": 1,
+      "task_name": null,
+      "task_status": null
+    }
+  ],
+  "blockers": [],
+  "recent_events": [],
+  "last_updated": "2026-10-02T21:28:40Z"
+}

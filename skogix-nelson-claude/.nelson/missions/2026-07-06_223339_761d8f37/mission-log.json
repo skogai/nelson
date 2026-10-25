@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-07-06T22:33:46Z",
+      "data": {
+        "from_phase": "SAILING_ORDERS",
+        "to_phase": "ESTIMATE"
+      }
+    },
+    {
+      "type": "phase_transition",
+      "checkpoint": 0,
+      "timestamp": "2026-07-06T23:52:52Z",
+      "data": {
+        "from_phase": "ESTIMATE",
+        "to_phase": "BATTLE_PLAN"
+      }
+    },
+    {
+      "type": "battle_plan_amended",
+      "checkpoint": 0,
+      "timestamp": "2026-07-07T00:12:07Z",
+      "data": {
+        "summary": "Sailing orders amendment v2 added; original v1 preserved.",
+        "rationale": "Reconnaissance and user clarification changed default target mechanism from gh clone under /tmp to wt worktrees from existing local source repositories."
+      }
+    }
+  ]
+}

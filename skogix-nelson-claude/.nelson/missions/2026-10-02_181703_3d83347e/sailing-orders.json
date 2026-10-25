@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "outcome": "Produce an ONBOARDING.md for this Nelson fork covering repo layout, plugin surfaces, and current in-flight state, plus a ranked improvement backlog in the captain's log",
+  "success_metric": "ONBOARDING.md lands at repo root, reviewed; captain's log carries a ranked improvement backlog with effort/impact notes; stale mission state is reported, not fixed",
+  "deadline": "this session",
+  "budget": {
+    "token_limit": null,
+    "time_limit_minutes": null
+  },
+  "constraints": [
+    "Read-only research — no edits to skill logic, scripts, or hooks.",
+    "Do not touch the stale mission (2026-07-06_223339_761d8f37) beyond reporting on it."
+  ],
+  "out_of_scope": [
+    "skogai/experiments/* — explicitly excluded from this mission by the user.",
+    "Resolving or reconciling in-flight branches.",
+    "Building the stale mission's repo-target feature.",
+    "Fixing any bugs found during research."
+  ],
+  "stop_criteria": [
+    "ONBOARDING.md written and reviewable at repo root.",
+    "Captain's log written with a ranked improvement backlog."
+  ],
+  "handoff_artifacts": [
+    "ONBOARDING.md",
+    "captains-log.md with improvement backlog"
+  ],
+  "circuit_breakers": {},
+  "created_at": "2026-10-02T18:17:03Z",
+  "amendments": [
+    {
+      "version": 2,
+      "amended_at": "2026-10-02T19:10:00Z",
+      "reason": "Checkpoint 1 reconnaissance showed README's existing usage/onboarding material is already adequate and upstream-generic; a generic ONBOARDING.md would mostly duplicate it. User reframed the deliverable toward the genuine gap: how to read a mission's live/historical state (sailing-orders.json, fleet-status.json, quarterdeck-report.md, captains-log.md) — the reporting/dashboard model, which is undocumented anywhere.",
+      "outcome": "Produce DASHBOARD.md documenting Nelson's mission-progress/reporting model for this fork — what artifacts a mission produces, where they live, and how to read them to know where a mission stands — plus a ranked improvement backlog in the captain's log that explicitly proposes a lightweight dashboard tool/command as a scoped next-mission item (not built this session).",
+      "success_metric": "DASHBOARD.md lands at repo root, reviewed, and explains the reporting/state model concretely (using this mission's own artifacts as the worked example); captain's log carries a ranked improvement backlog including a scoped dashboard-tool proposal; stale mission state is reported, not fixed.",
+      "constraints_added": [
+        "Stay documentation-only for this mission's own deliverable — do not build the dashboard tool now, only scope and justify it in the backlog."
+      ]
+    }
+  ]
+}

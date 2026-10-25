@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "outcome": "Add repository-target support so Nelson missions can run ships against external repositories cloned as gh repo clone skogai/<repo> /tmp/nelson/<repo>.",
+  "success_metric": "Tests and documentation demonstrate that a mission can record and use an external repo target without losing Nelson mission artifacts or existing local-repo behavior.",
+  "deadline": "this session",
+  "budget": {
+    "token_limit": null,
+    "time_limit_minutes": null
+  },
+  "constraints": [
+    "Prefer existing Nelson mission-data and hook patterns.",
+    "Do not perform network clones without explicit approval.",
+    "Keep backwards compatibility for existing missions."
+  ],
+  "out_of_scope": [
+    "Building a full remote execution service.",
+    "Changing GitHub authentication setup."
+  ],
+  "stop_criteria": [
+    "Implementation, focused tests, and docs are updated and verified."
+  ],
+  "handoff_artifacts": [
+    "Changed files summary, verification commands, Nelson mission artifacts."
+  ],
+  "amendments": [
+    {
+      "version": 2,
+      "amended_at": "2026-07-07T00:00:00Z",
+      "reason": "Reconnaissance and user clarification reframed the target mechanism from default gh clone under /tmp to provider-created worktrees from existing local source repositories.",
+      "outcome": "Add repository-target support so Nelson missions can run ships in provider-created worktrees from already-existing local source repositories while keeping mission state in one Nelson control repo.",
+      "success_metric": "Tests and documentation demonstrate that a mission can record a target source repo, create or use a wt/existing target worktree on branch nelson/<mission-id>, send ships to that working directory, and preserve existing local-repo behavior.",
+      "constraints_added": [
+        "Use an already-existing local source repository as the default target input.",
+        "Prefer the user's wt provider for worktree creation when available.",
+        "Record the actual provider-created working directory; do not assume one fixed worktree layout."
+      ],
+      "target_repository_contract": {
+        "default_provider": "wt",
+        "fallback_provider": "existing",
+        "branch_template": "nelson/<mission-id>",
+        "source_repo_requirement": "already-existing local repository path",
+        "working_dir_policy": "capture actual provider-created path or accept explicit existing checkout path",
+        "mission_state_policy": "single Nelson control repository under .nelson/missions",
+        "multi_repo_policy": "explicit only; prefer one ship per target repository"
+      }
+    }
+  ],
+  "circuit_breakers": {},
+  "created_at": "2026-07-06T22:33:39Z"
+}

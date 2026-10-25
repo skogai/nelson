@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "indexed_at": "2026-10-02T21:47:53Z",
+  "mission_count": 1,
+  "missions": [
+    {
+      "mission_id": "2026-10-02_181703_3d83347e",
+      "outcome_achieved": true,
+      "planned_outcome": "Produce an ONBOARDING.md for this Nelson fork covering repo layout, plugin surfaces, and current in-flight state, plus a ranked improvement backlog in the captain's log",
+      "actual_outcome": "DASHBOARD.md produced at repo root: a phase-organized state-model explainer plus a two-mission worked-example walkthrough (this mission as the healthy case, the stale 2026-07-06 mission as the cautionary case), admiral-validated against the real on-disk files.",
+      "success_metric": "ONBOARDING.md lands at repo root, reviewed; captain's log carries a ranked improvement backlog with effort/impact notes; stale mission state is reported, not fixed",
+      "success_metric_result": "DASHBOARD.md exists, reviewed by the admiral field-by-field against this mission's and the stale mission's real files (all matched); ranked improvement backlog with dashboard-tool proposal to follow in captains-log.md; stale mission reported, not touched.",
+      "created_at": "2026-10-02T18:17:03Z",
+      "completed_at": "2026-10-02T21:28:40Z",
+      "duration_minutes": 191,
+      "budget": {
+        "tokens_consumed": 0,
+        "tokens_budgeted": null,
+        "pct_consumed": 0.0
+      },
+      "fleet": {
+        "ships_used": 1,
+        "reliefs": 0,
+        "max_concurrent_ships": 1,
+        "execution_mode": "subagents",
+        "admiral_model": "sonnet",
+        "captain_count": 1,
+        "ship_classes": [
+          "patrol vessel"
+        ],
+        "captain_models": [
+          "sonnet"
+        ],
+        "had_red_cell": false
+      },
+      "tasks": {
+        "completed": 1,
+        "total": 1,
+        "by_station_tier": {
+          "0": 1,
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "task_names": [
+          "Write DASHBOARD.md (state-model explainer + worked-example walkthrough)"
+        ],
+        "file_ownership": [
+          "DASHBOARD.md"
+        ]
+      },
+      "quality": {
+        "standing_order_violations": 0,
+        "blockers_raised": 0,
+        "blockers_resolved": 0,
+        "avg_blocker_duration_minutes": null
+      },
+      "reusable_patterns": {
+        "adopt": [
+          "Using the live, currently-running mission as its own worked example for documentation \u2014 every claim is independently re-checkable against real files, not invented illustrative JSON.",
+          "Resolving a becalmed-fleet vs admiral-at-the-helm tension by using subagents mode with exactly one captain, rather than defaulting to single-session when the task involves real implementation work."
+        ],
+        "avoid": [
+          "Amending sailing-orders.json by direct edit without a matching nelson-data.py subcommand leaves fleet-status.json's cached mission.outcome field stale.",
+          "nelson-data.py event --type task_completed accepts no per-type data fields in this installed version, despite references/structured-data.md documenting --task-id/--owner/etc.; nelson-phase.py's UNDERWAY exit check requires data.task_id, so the documented CLI usage cannot actually unblock phase advance without a direct JSON edit."
+        ]
+      },
+      "event_types": [
+        "battle_plan_approved",
+        "checkpoint",
+        "mission_complete",
+        "permission_granted",
+        "phase_transition",
+        "squadron_formed",
+        "task_completed"
+      ],
+      "estimate_outcomes": []
+    }
+  ]
+}
